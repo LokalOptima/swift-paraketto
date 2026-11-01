@@ -10,6 +10,7 @@ struct ShortcutRecorder: View {
     @State private var capturedLabel: String?
     @State private var heldKey: NSEvent?
     @State private var isHovered = false
+    @State private var didSave = false
     @State private var hitArea = NSView()
 
     var body: some View {
@@ -23,8 +24,7 @@ struct ShortcutRecorder: View {
                 .contentShape(RoundedRectangle(cornerRadius: 4))
                 .overlay {
                     RoundedRectangle(cornerRadius: 4)
-                        .strokeBorder(rejected ? Color.red : settings.isRecording ? .blue : Color.primary.opacity(isHovered ? 0.5 : 0.3),
-                                      lineWidth: settings.isRecording ? 1.5 : 1)
+                        .strokeBorder(outlineColor, lineWidth: settings.isRecording || didSave ? 1.5 : 1)
                 }
                 .background(ShortcutButtonHitArea(view: hitArea).allowsHitTesting(false))
         }
@@ -35,6 +35,12 @@ struct ShortcutRecorder: View {
         .accessibilityValue(captureDescription)
         .help(rejected ? "This shortcut needs a held modifier or a function key. Esc cancels." : "Click to change the shortcut. Tap a modifier or press a combination; Esc cancels.")
         .font(.callout)
+        .task(id: didSave) {
+            guard didSave else { return }
+            do { try await Task.sleep(for: .milliseconds(600)) }
+            catch { return }
+            didSave = false
+        }
         .onDisappear(perform: stop)
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in stop() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in stop() }
@@ -42,6 +48,13 @@ struct ShortcutRecorder: View {
 
     private var buttonTitle: String {
         settings.isRecording ? capturedLabel ?? "…" : savedTitle
+    }
+
+    private var outlineColor: Color {
+        if rejected { return .red }
+        if settings.isRecording { return .blue }
+        if didSave { return Color(nsColor: .systemGreen) }
+        return .primary.opacity(isHovered ? 0.5 : 0.3)
     }
 
     private var isWaitingForInput: Bool { settings.isRecording && capturedLabel == nil }
@@ -60,6 +73,7 @@ struct ShortcutRecorder: View {
     }
 
     private func start() {
+        didSave = false
         settings.isRecording = true
         rejected = false
         pendingModifier = nil
@@ -76,8 +90,7 @@ struct ShortcutRecorder: View {
             if event.keyCode == 53, event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty {
                 stop()
             } else if let chord = Chord.from(event) {
-                settings.shortcut = .chord(chord)
-                stop()
+                save(.chord(chord))
             } else {
                 rejected = true
             }
@@ -86,8 +99,7 @@ struct ShortcutRecorder: View {
         let flags = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
             guard let key = ModifierKey(keyCode: event.keyCode) else { return event }
             if let heldKey, let chord = Chord.from(heldKey, modifiers: event.modifierFlags) {
-                settings.shortcut = .chord(chord)
-                stop()
+                save(.chord(chord))
                 return nil
             }
             let flags = event.modifierFlags.intersection([.command, .option, .control, .shift, .function])
@@ -97,8 +109,7 @@ struct ShortcutRecorder: View {
                 capturedLabel = isLoneModifier ? key.label : Chord.modifierLabel(flags)
                 rejected = !isLoneModifier
             } else if pendingModifier == key.keyCode, flags.isEmpty {
-                settings.shortcut = .tap(key)
-                stop()
+                save(.tap(key))
             }
             return event
         }
@@ -111,7 +122,14 @@ struct ShortcutRecorder: View {
         monitors = [keys, flags, clicks].compactMap { $0 }
     }
 
+    private func save(_ shortcut: Shortcut) {
+        settings.shortcut = shortcut
+        stop()
+        didSave = true
+    }
+
     private func stop() {
+        didSave = false
         guard settings.isRecording || !monitors.isEmpty else { return }
         for monitor in monitors { NSEvent.removeMonitor(monitor) }
         monitors = []

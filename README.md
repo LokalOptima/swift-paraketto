@@ -6,7 +6,7 @@ pasted into whatever app has focus. Multilingual
 Neural Engine with Core ML. Audio and transcripts stay on the Mac.
 
 - Menu bar only, no Dock icon
-- Shortcut: tap `Right ⌥` to start and stop a recording, `Esc` discards it. A tap is a press and release under 0.6 s with no other key in between, so Option+letter typing is unaffected. Click the shortcut beside the status in the menu, then tap another modifier key or press a key combination. The button starts empty with a blue outline, previews the keys you press, and marks invalid shortcuts red. A valid shortcut is saved and the outline returns to grey. Esc or clicking away cancels an unfinished change and restores the previous shortcut
+- Shortcut: tap `Right ⌥` to start and stop a recording, `Esc` discards it. A tap is a press and release under 0.6 s with no other key in between, so Option+letter typing is unaffected. Click the shortcut beside the status in the menu, then tap another modifier key or press a key combination. The button shows a grey `…` with a blue outline while waiting, previews the keys you press, and marks invalid shortcuts red. A valid shortcut is saved and the outline returns to grey. Esc or clicking away cancels an unfinished change and restores the previous shortcut
 - Transcription runs while you speak: every pause of 0.8 s ends a segment and it is transcribed right away, so when you pause before stopping the text is already there
 - Floating pill while recording: a level meter on a -65 to -25 dBFS scale with 30 ms attack / 160 ms release smoothing; brief peaks are retained between display updates
 - Text is pasted only if the app that had focus when you started still has it; otherwise it is kept in history

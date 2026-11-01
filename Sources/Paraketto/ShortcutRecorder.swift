@@ -16,11 +16,7 @@ struct ShortcutRecorder: View {
         Button {
             settings.isRecording ? stop() : start()
         } label: {
-            ZStack {
-                // Keep the field's size when capture starts with an empty selection.
-                Text(savedTitle).hidden().accessibilityHidden(true)
-                Text(buttonTitle)
-            }
+            Text(buttonTitle)
                 .lineLimit(1)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
@@ -33,7 +29,7 @@ struct ShortcutRecorder: View {
                 .background(ShortcutButtonHitArea(view: hitArea).allowsHitTesting(false))
         }
         .buttonStyle(.plain)
-        .foregroundStyle(settings.isRecording && rejected ? Color.red : .primary)
+        .foregroundStyle(rejected ? Color.red : isWaitingForInput ? .secondary : .primary)
         .onHover { isHovered = $0 }
         .accessibilityLabel("Change dictation shortcut")
         .accessibilityValue(captureDescription)
@@ -45,12 +41,14 @@ struct ShortcutRecorder: View {
     }
 
     private var buttonTitle: String {
-        settings.isRecording ? capturedLabel ?? "" : savedTitle
+        settings.isRecording ? capturedLabel ?? "…" : savedTitle
     }
+
+    private var isWaitingForInput: Bool { settings.isRecording && capturedLabel == nil }
 
     private var captureDescription: String {
         guard settings.isRecording else { return settings.shortcut.label }
-        guard !buttonTitle.isEmpty else { return "Waiting for a shortcut" }
+        guard !isWaitingForInput else { return "Waiting for a shortcut" }
         return "\(buttonTitle), \(rejected ? "invalid shortcut" : "recording shortcut")"
     }
 

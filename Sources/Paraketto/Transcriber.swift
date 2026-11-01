@@ -1,7 +1,7 @@
 import Foundation
 import ParakeetTDT
 
-/// Parakeet v2 or Ultra on the Apple Neural Engine through the ParakeetTDT library.
+/// Parakeet Ultra on the Apple Neural Engine through the ParakeetTDT library.
 actor Transcriber {
     enum LoadPhase: Equatable {
         /// Fetching model files from Hugging Face; `fraction` is 0...1 of the download.
@@ -24,21 +24,21 @@ actor Transcriber {
         self.vadModelURL = vadModelURL
     }
 
-    /// Keep the current recognizer usable if a replacement fails to download or load.
-    func load(model: ParakeetModel, progress: @escaping @Sendable (LoadPhase) -> Void) async throws {
-        let store = ModelStore(model: model)
+    /// Download, prepare, and load the Ultra recognizer.
+    func load(progress: @escaping @Sendable (LoadPhase) -> Void) async throws {
+        let store = ModelStore()
         let directory = try await store.locate { fraction in progress(.downloading(fraction: fraction)) }
+        // Keep the existing Ultra receipt so upgrades reuse its preparation history.
         let preparation = ModelPreparationRecord(
             directory: directory,
             additionalModels: [store.ownEncoderURL, store.ownFusedDecoderURL].compactMap { $0 },
             recordURL: store.ownDirectory.deletingLastPathComponent()
-                .appendingPathComponent(".\(model.rawValue)-preparation.json"))
+                .appendingPathComponent(".multi-preparation.json"))
         progress(preparation.isPrepared ? .loading : .optimizing)
         let vadModel = vadModelURL
         if vadModel == nil { Log.info("VadHead.mlmodelc not bundled; long recordings fall back to fixed windows") }
-        // VadHead includes its own trained subsampler; it detects pauses independently
-        // of the recognition encoder and vocabulary, so it can serve both modes.
-        let models = try ParakeetModels(directory: directory, model: model, vadModel: vadModel, encoderModel: store.ownEncoderURL, fusedDecoder: store.ownFusedDecoderURL)
+        // VadHead includes its own trained subsampler and detects pauses independently.
+        let models = try ParakeetModels(directory: directory, vadModel: vadModel, encoderModel: store.ownEncoderURL, fusedDecoder: store.ownFusedDecoderURL)
         Log.info("encoder windows (mel frames): \(models.encoder.variants.map(\.melFrames))")
         let transcriber = try ParakeetTranscriber(models: models)
         try transcriber.warmUp()

@@ -30,11 +30,7 @@ struct TranscriptsView: View {
             if let job = controller.fileImport {
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text(job.filename).lineLimit(1).truncationMode(.middle)
-                            Spacer()
-                            Text(job.mode.title).foregroundStyle(.secondary)
-                        }
+                        Text(job.filename).lineLimit(1).truncationMode(.middle)
                         ProgressView(value: job.progress)
                             .accessibilityLabel("Transcribing \(job.filename)")
                     }

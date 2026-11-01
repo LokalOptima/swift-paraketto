@@ -1,30 +1,29 @@
 import Foundation
 
-/// Locates one mode's assets, downloading into a staging directory before installing them.
-/// Existing Ultra caches remain usable. No recognition weights are shared between modes.
+/// Locates Ultra assets, downloading into a staging directory before installing them.
 public struct ModelStore {
-    public let model: ParakeetModel
+    public init() {}
 
-    public init(model: ParakeetModel = .multi) { self.model = model }
+    public static let jointFilename = "JointDecisionv3.mlmodelc"
+    static let requiredEntries = ["Preprocessor.mlmodelc", "Encoder.mlmodelc", "Decoder.mlmodelc",
+                                  jointFilename, "parakeet_v3_vocab.json"]
 
     public var ownDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Paraketto/models/\(model.cacheName)", isDirectory: true)
+            .appendingPathComponent("Paraketto/models/parakeet-ultra", isDirectory: true)
     }
 
     private var fluidAudioDirectories: [URL] {
         let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("FluidAudio/Models", isDirectory: true)
-        let names = model == .eng
-            ? ["parakeet-tdt-0.6b-v2-coreml", "parakeet-tdt-0.6b-v2"]
-            : ["parakeet-ultra", "parakeet-ultra-coreml"]
+        let names = ["parakeet-ultra", "parakeet-ultra-coreml"]
         return names.map { root.appendingPathComponent($0, isDirectory: true) }
     }
 
     /// Check actual model files, not just directories left by an interrupted download.
     public func isComplete(_ directory: URL) -> Bool {
         let fm = FileManager.default
-        return model.requiredEntries.allSatisfy { entry in
+        return Self.requiredEntries.allSatisfy { entry in
             let leaves = entry.hasSuffix(".mlmodelc")
                 ? ["coremldata.bin", "model.mil", "weights/weight.bin"].map { entry + "/" + $0 }
                 : [entry]
@@ -47,15 +46,13 @@ public struct ModelStore {
         return ownDirectory
     }
 
-    /// These optimized exports contain Ultra weights and must never be used with English v2.
+    /// Optional locally optimized Ultra exports.
     public var ownEncoderURL: URL? {
-        guard model == .multi else { return nil }
         let url = ownDirectory.deletingLastPathComponent().appendingPathComponent("parakeet-ultra-encoder/Encoder.mlmodelc")
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
     public var ownFusedDecoderURL: URL? {
-        guard model == .multi else { return nil }
         let url = ownDirectory.deletingLastPathComponent().appendingPathComponent("parakeet-ultra-decoder/DecoderJoint.mlmodelc")
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
@@ -71,21 +68,21 @@ public struct ModelStore {
     }
 
     func download(into directory: URL, progress: @escaping @Sendable (Double) -> Void) async throws {
-        let repository = model.repository
-        let api = URL(string: "https://huggingface.co/api/models/\(repository)/revision/\(model.revision)?blobs=true")!
+        let repository = "FluidInference/parakeet-ultra-coreml"
+        let api = URL(string: "https://huggingface.co/api/models/\(repository)/revision/main?blobs=true")!
         let (data, response) = try await URLSession.shared.data(from: api)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else {
             throw ParakeetError.download("Could not list \(repository)")
         }
         let info = try JSONDecoder().decode(RepositoryInfo.self, from: data)
         let files = info.siblings.filter { file in
-            model.requiredEntries.contains { file.rfilename == $0 || file.rfilename.hasPrefix($0 + "/") }
+            Self.requiredEntries.contains { file.rfilename == $0 || file.rfilename.hasPrefix($0 + "/") }
         }
         guard !files.isEmpty else { throw ParakeetError.download("Repository contains no model files") }
         let totalBytes = Double(files.reduce(Int64(0)) { $0 + $1.size })
         var doneBytes = 0.0
         let fm = FileManager.default
-        let staging = directory.deletingLastPathComponent().appendingPathComponent(".\(model.cacheName)-\(UUID().uuidString).download")
+        let staging = directory.deletingLastPathComponent().appendingPathComponent(".parakeet-ultra-\(UUID().uuidString).download")
         try fm.createDirectory(at: staging, withIntermediateDirectories: true)
         defer { try? fm.removeItem(at: staging) }
         progress(0)
@@ -116,7 +113,7 @@ public struct ModelStore {
         }
         try Task.checkCancellation()
         guard isComplete(staging) else { throw ParakeetError.download("Repository is missing expected files") }
-        // Only replace this mode's incomplete cache once its entire replacement is ready.
+        // Only replace the incomplete cache once its entire replacement is ready.
         if fm.fileExists(atPath: directory.path) { try fm.removeItem(at: directory) }
         try fm.moveItem(at: staging, to: directory)
     }

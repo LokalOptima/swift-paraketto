@@ -60,6 +60,7 @@ struct MenuContent: View {
             }
             .padding(.horizontal, 8)
             .padding(.top, 6)
+            .padding(.bottom, 8)
 
             if case .downloadingModel(let fraction) = controller.state {
                 HStack(spacing: 8) {
@@ -75,14 +76,10 @@ struct MenuContent: View {
                 .padding(.top, 8)
             }
 
-            RecognitionModePicker(selection: Binding(get: { controller.selectedModel }, set: { controller.selectModel($0) }),
-                                  isEnabled: controller.canChangeModel)
-                .padding(8)
-
             if let error = controller.modelError {
                 Text(error).font(.caption).foregroundStyle(.red).padding(8)
-                Button("Retry Mode Change") { controller.retryModelLoad() }
-                    .disabled(!controller.canChangeModel)
+                Button("Retry") { controller.retryModelLoad() }
+                    .disabled(controller.isLoadingModel)
             }
 
             if !Paster.isAccessibilityTrusted {
@@ -119,11 +116,10 @@ struct MenuContent: View {
     }
 
     private var statusLabel: String {
-        let mode = controller.selectedModel.title.uppercased()
         switch controller.state {
-        case .downloadingModel: return "Downloading \(mode)…"
-        case .loadingModel: return "Loading \(mode)…"
-        case .optimizingModel: return "Optimizing \(mode)…"
+        case .downloadingModel: return "Downloading…"
+        case .loadingModel: return "Loading…"
+        case .optimizingModel: return "Optimizing…"
         default: return controller.state.label
         }
     }

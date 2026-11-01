@@ -9,7 +9,7 @@ public struct Transcription {
     public let tokens: [(id: Int, frame: Int)]
 }
 
-/// Parakeet TDT (v2 or Ultra) speech recognition on Apple silicon with Core ML.
+/// Parakeet Ultra speech recognition on Apple silicon with Core ML.
 ///
 /// Pipeline per segment: 16 kHz samples → Preprocessor (mel) → Encoder (ANE, int8)
 /// → greedy TDT decode with the LSTM decoder and joint network → SentencePiece text.
@@ -38,7 +38,7 @@ public final class ParakeetTranscriber {
     public init(models: ParakeetModels, commitPauseSeconds: Double = 0.8) throws {
         self.models = models
         let vocabulary = models.vocabulary
-        decoder = TdtDecoder(decoder: models.decoder, joint: models.joint, blankToken: models.model.blankToken, fusedStep: models.fusedStep, isWordStart: { vocabulary.isWordStart($0) })
+        decoder = TdtDecoder(decoder: models.decoder, joint: models.joint, fusedStep: models.fusedStep, isWordStart: { vocabulary.isWordStart($0) })
         var segmenter = Segmenter()
         segmenter.maximumSegmentFrames = Self.windowFrames - 2 * Self.overlapFrames
         segmenter.commitPauseFrames = Int((commitPauseSeconds / 0.08).rounded())

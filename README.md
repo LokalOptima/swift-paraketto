@@ -1,9 +1,8 @@
 # Paraketto
 
 Minimal dictation for macOS. Tap Right Option, speak, tap it again: the text is
-pasted into whatever app has focus. Choose English-only
-[Parakeet v2](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2) or multilingual
-[Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra), running on the Apple
+pasted into whatever app has focus. Multilingual
+[Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) runs on the Apple
 Neural Engine with Core ML. Audio and transcripts stay on the Mac.
 
 - Menu bar only, no Dock icon
@@ -13,39 +12,29 @@ Neural Engine with Core ML. Audio and transcripts stay on the Mac.
 - Text is pasted only if the app that had focus when you started still has it; otherwise it is kept in history
 - **Transcripts** (right-click the menu-bar icon, or choose Transcripts in its menu): recordings grouped by day, with playback, copy, delete, and word count stats. Entries show up to four lines; hover to reveal actions and expand longer text
 - Drop an audio file onto Transcripts to transcribe it locally, including WAV, M4A and AAC files supported by macOS
-- **eng / multi** buttons in the menu: English v2 or Ultra's 25 European languages with automatic detection. Both include punctuation and capitalization
-- Models download on first use (about 464 MB for `eng`, 613 MB for `multi`); existing compatible FluidAudio caches are reused
+- Supports 25 European languages with automatic detection, punctuation, and capitalization
+- The model downloads on first use (about 613 MB); existing compatible FluidAudio caches are reused
 
 The transcript also stays on the clipboard after pasting. The previous clipboard contents are not
 restored, since a timed restore races slow readers.
 
-## Recognition modes
+## Model setup
 
-Choose **eng** or **multi** using the segmented control in the menu. `multi` is the default.
-A successful selection is remembered across launches. Switching is disabled while recording,
-transcribing, or preparing a model. The menu shows a byte-based download progress bar,
-then **Optimizing ENG…** or **Optimizing MULTI…** with a spinner for initial preparation.
-Later starts show **Loading** and the mode name, followed by a green Ready label.
-If switching fails, the previous loaded mode remains available;
-use **Retry Mode Change** to try the failed selection again.
+Parakeet Ultra is the only recognizer, shared by live dictation and audio imports.
+The menu shows a byte-based download progress bar, then **Optimizing…** with a spinner
+for initial preparation. Later starts show **Loading…**, followed by a green Ready label.
+If setup fails, choose **Retry** in the menu.
 
-Each mode has a separate cache under `~/Library/Application Support/Paraketto/models/`:
+Model files are cached at `~/Library/Application Support/Paraketto/models/parakeet-ultra/`.
+Downloads are installed only after all required files arrive, so an interrupted download
+cannot leave a seemingly ready model. Existing compatible FluidAudio caches and optional
+locally optimized Ultra encoder and decoder exports are reused.
 
-| Mode | Recognizer | Cache folder |
-|------|------------|--------------|
-| `eng` | Parakeet TDT 0.6B v2, English only | `parakeet-v2` |
-| `multi` | Parakeet Ultra, 25 European languages | `parakeet-ultra` |
-
-The command-line runner uses the same modes:
+The command-line runner uses the same recognizer:
 
 ```bash
-.build/release/paraketto-cli --model eng --vad .build/VadHead.mlmodelc recording.wav
-.build/release/paraketto-cli --model multi --vad .build/VadHead.mlmodelc recording.wav
+.build/release/paraketto-cli --vad .build/VadHead.mlmodelc recording.wav
 ```
-
-The CLI defaults to `multi`. Ultra's optional optimized encoder and fused decoder are used
-only for `multi`; `eng` always uses its own v2 assets. Downloads are installed only after all
-required files arrive, so an interrupted first download cannot leave a seemingly ready model.
 
 ## Build and run
 
@@ -56,20 +45,20 @@ make run
 ```
 
 This builds with SwiftPM, compiles the VAD model, assembles `Paraketto.app`, signs it,
-prepares downloaded recognition modes for this Mac, updates `/Applications/Paraketto.app`,
+prepares the downloaded model for this Mac, updates `/Applications/Paraketto.app`,
 and launches that installed copy. `make bundle` also updates the Applications copy on every
 successful build, ready to open or compress in Finder for sharing.
 
 Core ML's portable `.mlmodelc` files still need device-specific specialization when first
 loaded. `make bundle` performs that load and warm-up through the signed app executable,
-without opening windows, accessing the microphone, registering hotkeys, or changing the
-selected mode. The first build can therefore spend tens of seconds preparing a model;
+without opening windows, accessing the microphone, or registering hotkeys.
+The first build can therefore spend tens of seconds preparing a model;
 subsequent builds normally reuse Core ML's disk cache. Missing models are skipped.
-Successful preparation is remembered per mode, model files, and macOS version, including
+Successful preparation is remembered for the model files and macOS version, including
 preparation during builds. This is a UI hint, not a query of Core ML's private cache;
 a system cache purge can still make a later **Loading** take longer.
 
-- `make prepare-models` downloads and prepares both `eng` and `multi` explicitly.
+- `make prepare-models` downloads and prepares Ultra explicitly.
 - `make bundle PREPARE_MODELS=0` skips preparation, useful when packaging for another Mac.
 - `make bundle INSTALL_APP=0` keeps the build in the checkout without installing it.
 - `INSTALL_DIR=~/Applications` installs to your personal Applications folder instead.
@@ -121,14 +110,12 @@ is not trusted and text is only copied. Two ways out:
 
 ## Speech recognition
 
-`Sources/ParakeetTDT` is a self-contained Core ML runner for Parakeet TDT 0.6B v2 and Ultra,
-with no package dependencies. The tensor dimensions are shared, while the blank token,
-vocabulary, model files and caches are selected per mode:
+`Sources/ParakeetTDT` is a self-contained Core ML runner for Parakeet Ultra,
+with no package dependencies:
 
 | File | Role |
 |---|---|
-| `ParakeetModel.swift` | mode-specific repository, filenames, vocabulary and blank token |
-| `ModelStore.swift` | finds or downloads the selected mode's Core ML assets |
+| `ModelStore.swift` | finds or downloads Ultra's Core ML assets |
 | `ModelFileDownload.swift` | cancellable file transfers with live byte progress and temporary-file cleanup |
 | `ParakeetModels.swift` | loads the four Core ML models (preprocessor on CPU, the rest on the ANE), the VAD head and the vocabulary |
 | `ParakeetTranscriber.swift` | `Session`: audio in, segments decoded as their cuts become known; mel → encoder → decode with 1 s of context on each side |
@@ -150,8 +137,8 @@ engine uses to cut long audio at pauses. FluidAudio's export leaves it out, so
 (SiLU after `proj` and `ctx`, no residual) follows parakeet.cpp's published analysis, since
 moondream does not document the head; it gives one speech probability per 80 ms frame.
 
-The bundled export includes its own subsampler, so the app also uses it as a standalone pause
-detector in `eng` mode. It does not reuse Ultra's recognition encoder or vocabulary for v2.
+The bundled export includes its own subsampler, so pause detection runs independently
+of the recognition encoder.
 
 A `Session` segments the recording while it is still going. Every 0.24 s it runs the VAD head
 over the newest audio; a silence of 0.8 s ends the segment before it, which is then encoded and
@@ -253,9 +240,8 @@ PARAKETTO_TEST_AUDIO=/path/to/1995-1826-0002.wav make test-models
 
 The fixture defaults to `data/librispeech/1995-1826-0002.wav` inside this checkout. Opting into
 model tests requires the models and fixture to exist; missing prerequisites fail the run.
-These tests check a `multi → eng → multi` round trip, silence and quiet speech, long-recording
+These tests check repeated model loading, silence and quiet speech, long-recording
 memory and VAD timing, file imports, and cancellation.
-The remaining benchmark results in this section refer to `multi`.
 
 `tests/fixtures/librispeech_fluidaudio.tsv` holds FluidAudio's transcripts of 17 LibriSpeech
 clips. `make compare` transcribes `data/librispeech/*.wav` (set `CLIPS=` to another location) and reports every
@@ -272,8 +258,8 @@ VAD strip, and `PARAKEET_DEBUG=1` logs every joint decision.
 | File | Role |
 |---|---|
 | `App.swift` | app entry point, menu-bar/Transcripts/Settings scenes, startup |
-| `MenuBarViews.swift` | status, loading indicators, mode selection, and menu actions |
-| `MenuControls.swift` | shared segmented control and menu button styling |
+| `MenuBarViews.swift` | status, loading indicators, and menu actions |
+| `MenuControls.swift` | menu action labels and button styling |
 | `MenuBarSecondaryClick.swift` | right-click shortcut to Transcripts |
 | `DictationController.swift` | record → transcribe → paste state machine, Esc cancel, meter ticker |
 | `Hotkey.swift` | Carbon global hotkey for key combinations |

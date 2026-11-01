@@ -5,30 +5,21 @@ import ParakeetTDT
 /// configuration and application context used by interactive dictation.
 enum ModelPreparation {
     static func run(cachedOnly: Bool) async throws {
-        for mode in ParakeetModel.allCases {
-            if cachedOnly, ModelStore(model: mode).cachedDirectory == nil {
-                report("Skipping \(mode.title): not downloaded (use make prepare-models to download both modes).")
-                continue
-            }
-            report("Preparing \(mode.title) for this Mac; the first preparation can take a minute…")
-            let start = Date()
-            // Release each recognizer before loading the next mode. This warms disk caches;
-            // it does not leave a second app or resident model running after the build.
-            try await prepare(mode)
-            report(String(format: "%@ prepared in %.2f s", mode.title, Date().timeIntervalSince(start)))
+        if cachedOnly, ModelStore().cachedDirectory == nil {
+            report("Skipping preparation: model not downloaded (use make prepare-models to download it).")
+            return
         }
-    }
-
-    private static func prepare(_ mode: ParakeetModel) async throws {
+        let start = Date()
         let recognizer = Transcriber()
-        try await recognizer.load(model: mode) { phase in
+        try await recognizer.load { phase in
             switch phase {
             case .downloading(let fraction):
-                report(String(format: "%@ downloading %.0f%%", mode.title, fraction * 100))
-            case .optimizing: report("Optimizing \(mode.title.uppercased())…")
-            case .loading: report("Loading \(mode.title.uppercased())…")
+                report(String(format: "Downloading %.0f%%", fraction * 100))
+            case .optimizing: report("Optimizing…")
+            case .loading: report("Loading…")
             }
         }
+        report(String(format: "Parakeet Ultra prepared in %.2f s", Date().timeIntervalSince(start)))
     }
 
     private static func report(_ message: String) {

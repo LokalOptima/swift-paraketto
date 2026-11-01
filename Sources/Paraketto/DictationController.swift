@@ -1,7 +1,6 @@
 import AppKit
 import Combine
 import Foundation
-import ParakeetTDT
 
 /// Owns the record → transcribe → paste loop and exposes state for the menu bar, overlay and history.
 @MainActor
@@ -58,18 +57,15 @@ final class DictationController: ObservableObject {
     @Published private(set) var inputLevel: Float = 0
     @Published private(set) var elapsed: TimeInterval = 0
     @Published private(set) var destination: Destination?
-    @Published private(set) var selectedModel = ParakeetModel(rawValue: UserDefaults.standard.string(forKey: "recognitionMode") ?? "") ?? .multi
     @Published private(set) var modelError: String?
     @Published private(set) var isLoadingModel = true
     @Published private(set) var isStartingRecording = false
-    private var loadedModel: ParakeetModel?
-    private var failedModel: ParakeetModel?
+    private var isModelReady = false
     private var modelLoadID = UUID()
 
     struct FileImportStatus {
         let id = UUID()
         let filename: String
-        let mode: ParakeetModel
         var progress: Double = 0
     }
     @Published private(set) var fileImport: FileImportStatus?
@@ -77,10 +73,8 @@ final class DictationController: ObservableObject {
     private var importTask: Task<Void, Never>?
 
     var canImportFiles: Bool {
-        loadedModel != nil && !isLoadingModel && !isStartingRecording && state.canStartRecording && importTask == nil
+        isModelReady && !isLoadingModel && !isStartingRecording && state.canStartRecording && importTask == nil
     }
-
-    var canChangeModel: Bool { !isLoadingModel && !isStartingRecording && !state.isCancellable }
 
     let history = HistoryStore()
     let shortcuts = ShortcutSettings()
@@ -176,18 +170,16 @@ final class DictationController: ObservableObject {
     }
 
     private func loadModel() async {
-        let model = selectedModel
         let loadID = UUID()
         modelLoadID = loadID
         isLoadingModel = true
         modelError = nil
-        failedModel = nil
         state = .loadingModel
         defer { isLoadingModel = false }
         do {
             await feeder?.value
             let started = Date()
-            try await transcriber.load(model: model) { phase in
+            try await transcriber.load { phase in
                 Task { @MainActor [weak self] in
                     guard let self, self.isLoadingModel, self.modelLoadID == loadID else { return }
                     switch phase {
@@ -197,26 +189,18 @@ final class DictationController: ObservableObject {
                     }
                 }
             }
-            loadedModel = model
-            UserDefaults.standard.set(model.rawValue, forKey: "recognitionMode")
+            isModelReady = true
             state = .idle
-            Log.info("\(model.title) (\(model.description)) ready in \(Int(Date().timeIntervalSince(started) * 1000)) ms")
+            Log.info("Parakeet Ultra ready in \(Int(Date().timeIntervalSince(started) * 1000)) ms")
         } catch {
-            failedModel = model
-            modelError = "Could not load \(model.title): \(error.localizedDescription)"
-            if let loadedModel {
-                selectedModel = loadedModel
-                state = .idle
-            } else {
-                state = .failed(error.localizedDescription)
-            }
+            modelError = "Could not load model: \(error.localizedDescription)"
+            state = .failed(error.localizedDescription)
             Log.info("Model load failed: \(error)")
         }
     }
 
-    func selectModel(_ model: ParakeetModel) {
-        guard canChangeModel, model != loadedModel || modelError != nil else { return }
-        selectedModel = model
+    func retryModelLoad() {
+        guard !isLoadingModel, !isModelReady else { return }
         // Reserve the transition synchronously, before another shortcut/menu action can run.
         isLoadingModel = true
         state = .loadingModel
@@ -224,17 +208,14 @@ final class DictationController: ObservableObject {
         Task { await loadModel() }
     }
 
-    func retryModelLoad() { selectModel(failedModel ?? selectedModel) }
-
-    /// Finder drops use the current mode and process a batch in order, sharing one loaded model.
+    /// Finder drops process a batch in order, sharing the loaded recognizer.
     @discardableResult
     func importFiles(_ urls: [URL]) -> Bool {
         guard canImportFiles, !urls.isEmpty, urls.allSatisfy(\.isFileURL) else { return false }
-        let mode = selectedModel
         state = .transcribing
         overlay?.hide()
         importErrors = []
-        fileImport = FileImportStatus(filename: urls[0].lastPathComponent, mode: mode)
+        fileImport = FileImportStatus(filename: urls[0].lastPathComponent)
         importTask = Task {
             defer {
                 fileImport = nil
@@ -244,7 +225,7 @@ final class DictationController: ObservableObject {
             await feeder?.value
             for url in urls {
                 guard !Task.isCancelled else { return }
-                let status = FileImportStatus(filename: url.lastPathComponent, mode: mode)
+                let status = FileImportStatus(filename: url.lastPathComponent)
                 fileImport = status
                 do {
                     let result = try await transcriber.transcribeFile(url) { [weak self] fraction in
@@ -284,7 +265,7 @@ final class DictationController: ObservableObject {
     }
 
     private func beginRecording() {
-        guard !isLoadingModel, loadedModel != nil, !isStartingRecording else { return }
+        guard !isLoadingModel, isModelReady, !isStartingRecording else { return }
         isStartingRecording = true
         Task {
             defer { isStartingRecording = false }

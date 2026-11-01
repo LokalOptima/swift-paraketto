@@ -9,7 +9,6 @@ import ParakeetTDT
 ///   paraketto-cli [--vad VadHead.mlmodelc] [--compare reference.tsv] [--vad-probe] file.wav ...
 
 var files: [String] = []
-var model: ParakeetModel = .multi
 var vadPath: String?
 var comparePath: String?
 var vadProbe = false
@@ -38,9 +37,6 @@ func argumentValue(for option: String) -> String {
 while !arguments.isEmpty {
     let argument = arguments.removeFirst()
     switch argument {
-    case "--model":
-        guard let choice = ParakeetModel(rawValue: argumentValue(for: argument)) else { argumentError("--model expects eng or multi") }
-        model = choice
     case "--vad": vadPath = argumentValue(for: argument)
     case "--compare": comparePath = argumentValue(for: argument)
     case "--vad-probe": vadProbe = true
@@ -67,15 +63,15 @@ while !arguments.isEmpty {
         files.append(argument)
     }
 }
-let store = ModelStore(model: model)
+let store = ModelStore()
 /// Prints, per model, how Core ML assigns its operations to compute devices (its `MLComputePlan`).
 @available(macOS 14.4, *)
-func printComputePlans(directory: URL, model: ParakeetModel, store: ModelStore, vad: URL?) async {
+func printComputePlans(directory: URL, store: ModelStore, vad: URL?) async {
     var models: [(String, URL, MLComputeUnits)] = [
         ("Preprocessor", directory.appendingPathComponent("Preprocessor.mlmodelc"), .cpuOnly),
         ("Encoder", directory.appendingPathComponent("Encoder.mlmodelc"), .cpuAndNeuralEngine),
         ("Decoder", directory.appendingPathComponent("Decoder.mlmodelc"), .cpuAndNeuralEngine),
-        (model.jointFilename, directory.appendingPathComponent(model.jointFilename), .cpuAndNeuralEngine),
+        (ModelStore.jointFilename, directory.appendingPathComponent(ModelStore.jointFilename), .cpuAndNeuralEngine),
     ]
     if let vad { models.append(("VadHead", vad, .cpuAndNeuralEngine)) }
     if let own = store.ownEncoderURL { models.append(("Encoder (ours, default function)", own, .cpuAndNeuralEngine)) }
@@ -113,7 +109,7 @@ func printComputePlans(directory: URL, model: ParakeetModel, store: ModelStore, 
 }
 
 guard !files.isEmpty || showPlan else {
-    FileHandle.standardError.write(Data("usage: paraketto-cli [--model eng|multi] [--vad DIR.mlmodelc] [--compare ref.tsv] [--vad-probe] file.wav ...\n".utf8))
+    FileHandle.standardError.write(Data("usage: paraketto-cli [--vad DIR.mlmodelc] [--compare ref.tsv] [--vad-probe] file.wav ...\n".utf8))
     exit(2)
 }
 
@@ -148,7 +144,7 @@ let directory = try await store.locate { fraction in
 }
 if showPlan {
     if #available(macOS 14.4, *) {
-        await printComputePlans(directory: directory, model: model, store: store, vad: vadPath.map { URL(fileURLWithPath: $0) })
+        await printComputePlans(directory: directory, store: store, vad: vadPath.map { URL(fileURLWithPath: $0) })
     } else {
         print("MLComputePlan needs macOS 14.4")
     }
@@ -156,8 +152,7 @@ if showPlan {
 }
 let encoderURL = encoderPath.map { URL(fileURLWithPath: $0) } ?? store.ownEncoderURL
 let fusedURL = useFused ? (fusedPath.map { URL(fileURLWithPath: $0) } ?? store.ownFusedDecoderURL) : nil
-let models = try ParakeetModels(directory: directory, model: model, vadModel: vadPath.map { URL(fileURLWithPath: $0) }, encoderModel: encoderURL, fusedDecoder: fusedURL)
-FileHandle.standardError.write(Data("mode: \(model.title) (\(model.description))\n".utf8))
+let models = try ParakeetModels(directory: directory, vadModel: vadPath.map { URL(fileURLWithPath: $0) }, encoderModel: encoderURL, fusedDecoder: fusedURL)
 FileHandle.standardError.write(Data("fused decoder step: \(fusedURL == nil ? "off" : "on")\n".utf8))
 FileHandle.standardError.write(Data("encoder: \(encoderURL?.path ?? "FluidAudio 15 s") windows \(models.encoder.variants.map(\.melFrames))\n".utf8))
 let transcriber = try ParakeetTranscriber(models: models, commitPauseSeconds: pauseSeconds)

@@ -1,39 +1,4 @@
 import SwiftUI
-import ParakeetTDT
-
-/// Normal window content, so macOS renders both text labels and its selected segment.
-struct RecognitionModePicker: View {
-    @Binding var selection: ParakeetModel
-    var isEnabled = true
-
-    var body: some View {
-        Picker("Mode", selection: $selection) {
-            ForEach(ParakeetModel.allCases) { model in
-                Text(isEnabled ? model.title : " ")
-                    .accessibilityLabel(model.title)
-                    .tag(model)
-            }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .disabled(!isEnabled)
-        .overlay {
-            // Keep native disabled interaction and segment styling, but draw readable
-            // labels ourselves: macOS dims the selected label almost to invisibility.
-            if !isEnabled {
-                HStack(spacing: 0) {
-                    ForEach(ParakeetModel.allCases) { model in
-                        Text(model.title)
-                            .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-            }
-        }
-    }
-}
 
 struct MenuActionLabel: View {
     let title: String

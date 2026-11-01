@@ -51,7 +51,7 @@ struct TdtDecoder {
     static let debug = ProcessInfo.processInfo.environment["PARAKEET_DEBUG"] != nil
     let decoder: MLModel
     let joint: MLModel
-    let blankToken: Int
+    private let blankToken = ParakeetConstants.blankToken
     /// Optional fused model: one call advances the LSTM with a token and decides the next frame.
     let fusedStep: MLModel?
     /// Whether a token starts a new word ("▁" prefix). Used to finish a word that straddles a segment end.

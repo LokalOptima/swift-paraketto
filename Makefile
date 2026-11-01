@@ -82,7 +82,7 @@ ifeq ($(INSTALL_APP),1)
 	codesign --verify --deep --strict "$(INSTALL_DIR)/$(BUNDLE)"
 endif
 
-# Explicitly download and prepare both modes; bundle alone only prepares installed models.
+# Explicitly download and prepare Ultra; bundle alone only prepares an installed model.
 prepare-models: bundle
 	$(CONTENTS)/MacOS/$(APP_NAME) --prepare-models
 

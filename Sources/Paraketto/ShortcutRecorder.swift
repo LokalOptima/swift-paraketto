@@ -10,27 +10,33 @@ struct ShortcutRecorder: View {
     @State private var capturedLabel: String?
     @State private var heldKey: NSEvent?
     @State private var isHovered = false
+    @State private var hitArea = NSView()
 
     var body: some View {
         Button {
             settings.isRecording ? stop() : start()
         } label: {
-            Text(buttonTitle)
+            ZStack {
+                // Keep the field's size when capture starts with an empty selection.
+                Text(savedTitle).hidden().accessibilityHidden(true)
+                Text(buttonTitle)
+            }
                 .lineLimit(1)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
                 .contentShape(RoundedRectangle(cornerRadius: 4))
                 .overlay {
                     RoundedRectangle(cornerRadius: 4)
-                        .strokeBorder(rejected ? Color.red : Color.primary.opacity(settings.isRecording || isHovered ? 0.5 : 0.3),
+                        .strokeBorder(rejected ? Color.red : settings.isRecording ? .blue : Color.primary.opacity(isHovered ? 0.5 : 0.3),
                                       lineWidth: settings.isRecording ? 1.5 : 1)
                 }
+                .background(ShortcutButtonHitArea(view: hitArea).allowsHitTesting(false))
         }
         .buttonStyle(.plain)
         .foregroundStyle(settings.isRecording && rejected ? Color.red : .primary)
         .onHover { isHovered = $0 }
         .accessibilityLabel("Change dictation shortcut")
-        .accessibilityValue(settings.isRecording ? "\(buttonTitle), \(rejected ? "invalid shortcut" : "recording shortcut")" : settings.shortcut.label)
+        .accessibilityValue(captureDescription)
         .help(rejected ? "This shortcut needs a held modifier or a function key. Esc cancels." : "Click to change the shortcut. Tap a modifier or press a combination; Esc cancels.")
         .font(.callout)
         .onDisappear(perform: stop)
@@ -39,7 +45,16 @@ struct ShortcutRecorder: View {
     }
 
     private var buttonTitle: String {
-        if settings.isRecording, let capturedLabel { return capturedLabel }
+        settings.isRecording ? capturedLabel ?? "" : savedTitle
+    }
+
+    private var captureDescription: String {
+        guard settings.isRecording else { return settings.shortcut.label }
+        guard !buttonTitle.isEmpty else { return "Waiting for a shortcut" }
+        return "\(buttonTitle), \(rejected ? "invalid shortcut" : "recording shortcut")"
+    }
+
+    private var savedTitle: String {
         switch settings.shortcut {
         case .tap(let key): return key.label
         case .chord(let chord): return chord.label
@@ -89,7 +104,13 @@ struct ShortcutRecorder: View {
             }
             return event
         }
-        monitors = [keys, flags].compactMap { $0 }
+        let clicks = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { event in
+            if event.window !== hitArea.window || !hitArea.bounds.contains(hitArea.convert(event.locationInWindow, from: nil)) {
+                stop()
+            }
+            return event
+        }
+        monitors = [keys, flags, clicks].compactMap { $0 }
     }
 
     private func stop() {
@@ -102,4 +123,11 @@ struct ShortcutRecorder: View {
         rejected = false
         settings.isRecording = false
     }
+}
+
+/// Native coordinates let click-away cancellation work anywhere in the menu.
+private struct ShortcutButtonHitArea: NSViewRepresentable {
+    let view: NSView
+    func makeNSView(context: Context) -> NSView { view }
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }

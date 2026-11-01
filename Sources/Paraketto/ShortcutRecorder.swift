@@ -7,34 +7,31 @@ struct ShortcutRecorder: View {
     @State private var monitors: [Any] = []
     @State private var pendingModifier: UInt16?
     @State private var rejected = false
+    @State private var capturedLabel: String?
+    @State private var heldKey: NSEvent?
     @State private var isHovered = false
 
     var body: some View {
-        HStack(spacing: 5) {
-            if case .tap = settings.shortcut, !settings.isRecording {
-                Text("tap:").foregroundStyle(.secondary)
-            }
-            Button {
-                settings.isRecording ? stop() : start()
-            } label: {
-                Text(buttonTitle)
-                    .lineLimit(1)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .contentShape(RoundedRectangle(cornerRadius: 4))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 4)
-                            .strokeBorder(settings.isRecording ? (rejected ? Color.red : .accentColor)
-                                          : Color.primary.opacity(isHovered ? 0.5 : 0.3), lineWidth: 1)
-                    }
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(settings.isRecording && rejected ? Color.red : .primary)
-            .onHover { isHovered = $0 }
-            .accessibilityLabel("Change dictation shortcut")
-            .accessibilityValue(settings.isRecording ? "Waiting for a shortcut" : settings.shortcut.label)
-            .help(rejected ? "A plain key would block typing. Add a modifier, or use a function key." : "Click to change the shortcut. Tap a modifier or press a combination; Esc cancels.")
+        Button {
+            settings.isRecording ? stop() : start()
+        } label: {
+            Text(buttonTitle)
+                .lineLimit(1)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .contentShape(RoundedRectangle(cornerRadius: 4))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 4)
+                        .strokeBorder(rejected ? Color.red : Color.primary.opacity(settings.isRecording || isHovered ? 0.5 : 0.3),
+                                      lineWidth: settings.isRecording ? 1.5 : 1)
+                }
         }
+        .buttonStyle(.plain)
+        .foregroundStyle(settings.isRecording && rejected ? Color.red : .primary)
+        .onHover { isHovered = $0 }
+        .accessibilityLabel("Change dictation shortcut")
+        .accessibilityValue(settings.isRecording ? "\(buttonTitle), \(rejected ? "invalid shortcut" : "recording shortcut")" : settings.shortcut.label)
+        .help(rejected ? "This shortcut needs a held modifier or a function key. Esc cancels." : "Click to change the shortcut. Tap a modifier or press a combination; Esc cancels.")
         .font(.callout)
         .onDisappear(perform: stop)
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in stop() }
@@ -42,7 +39,7 @@ struct ShortcutRecorder: View {
     }
 
     private var buttonTitle: String {
-        if settings.isRecording { return rejected ? "Add a modifier…" : "Press a key…" }
+        if settings.isRecording, let capturedLabel { return capturedLabel }
         switch settings.shortcut {
         case .tap(let key): return key.label
         case .chord(let chord): return chord.label
@@ -53,7 +50,15 @@ struct ShortcutRecorder: View {
         settings.isRecording = true
         rejected = false
         pendingModifier = nil
-        let keys = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+        capturedLabel = nil
+        heldKey = nil
+        let keys = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { event in
+            if event.type == .keyUp {
+                if heldKey?.keyCode == event.keyCode { heldKey = nil }
+                return nil
+            }
+            capturedLabel = Chord.label(for: event)
+            heldKey = event
             pendingModifier = nil
             if event.keyCode == 53, event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty {
                 stop()
@@ -67,9 +72,18 @@ struct ShortcutRecorder: View {
         }
         let flags = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
             guard let key = ModifierKey(keyCode: event.keyCode) else { return event }
-            if event.modifierFlags.contains(key.flag) {
-                pendingModifier = key.keyCode
-            } else if pendingModifier == key.keyCode {
+            if let heldKey, let chord = Chord.from(heldKey, modifiers: event.modifierFlags) {
+                settings.shortcut = .chord(chord)
+                stop()
+                return nil
+            }
+            let flags = event.modifierFlags.intersection([.command, .option, .control, .shift, .function])
+            if flags.contains(key.flag) {
+                let isLoneModifier = flags.rawValue.nonzeroBitCount == 1
+                pendingModifier = isLoneModifier ? key.keyCode : nil
+                capturedLabel = isLoneModifier ? key.label : Chord.modifierLabel(flags)
+                rejected = !isLoneModifier
+            } else if pendingModifier == key.keyCode, flags.isEmpty {
                 settings.shortcut = .tap(key)
                 stop()
             }
@@ -83,6 +97,8 @@ struct ShortcutRecorder: View {
         for monitor in monitors { NSEvent.removeMonitor(monitor) }
         monitors = []
         pendingModifier = nil
+        capturedLabel = nil
+        heldKey = nil
         rejected = false
         settings.isRecording = false
     }

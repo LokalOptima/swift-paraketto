@@ -73,17 +73,27 @@ struct Chord: Codable, Equatable {
 
     /// Builds a chord from a key event. Returns nil for bare keys that would hijack typing;
     /// function keys are allowed without modifiers.
-    static func from(_ event: NSEvent) -> Chord? {
-        let flags = event.modifierFlags.intersection([.command, .option, .control, .shift])
+    static func from(_ event: NSEvent, modifiers: NSEvent.ModifierFlags? = nil) -> Chord? {
+        let flags = (modifiers ?? event.modifierFlags).intersection([.command, .option, .control, .shift])
         let name = Self.keyName(for: event)
         let isFunctionKey = name.hasPrefix("F") && Int(name.dropFirst()) != nil
         guard !flags.isEmpty || isFunctionKey else { return nil }
+        return Chord(keyCode: event.keyCode, modifiers: flags.rawValue, label: label(for: event, modifiers: flags))
+    }
+
+    /// Also formats invalid candidates, so the recorder can show the keys actually pressed.
+    static func label(for event: NSEvent, modifiers: NSEvent.ModifierFlags? = nil) -> String {
+        modifierLabel(modifiers ?? event.modifierFlags) + keyName(for: event)
+    }
+
+    static func modifierLabel(_ flags: NSEvent.ModifierFlags) -> String {
         var label = ""
         if flags.contains(.control) { label += "⌃" }
         if flags.contains(.option) { label += "⌥" }
         if flags.contains(.shift) { label += "⇧" }
         if flags.contains(.command) { label += "⌘" }
-        return Chord(keyCode: event.keyCode, modifiers: flags.rawValue, label: label + name)
+        if flags.contains(.function) { label += "Fn" }
+        return label
     }
 
     private static func keyName(for event: NSEvent) -> String {

@@ -117,8 +117,8 @@ with no package dependencies:
 |---|---|
 | `ModelStore.swift` | finds or downloads Ultra's Core ML assets |
 | `ModelFileDownload.swift` | cancellable file transfers with live byte progress and temporary-file cleanup |
-| `ParakeetModels.swift` | loads the four Core ML models (preprocessor on CPU, the rest on the ANE), the VAD head and the vocabulary |
-| `ParakeetTranscriber.swift` | `Session`: audio in, segments decoded as their cuts become known; mel → encoder → decode with 1 s of context on each side |
+| `ParakeetModels.swift` | loads the four Core ML models (preprocessor on CPU; other models allow CPU and ANE), the VAD head and the vocabulary |
+| `ParakeetTranscriber.swift` | streaming sessions and mel → encoder → decode; about 1 s of context at pauses, 2 s of overlap on each side of cuts through speech |
 | `TdtDecoder.swift` | greedy Token-and-Duration Transducer loop with the 2-layer LSTM state |
 | `VoiceActivity.swift` | places cuts at pauses found by the model's own VAD head |
 | `EncoderSet.swift` | picks the shortest encoder window that holds a segment |
@@ -176,14 +176,15 @@ drifts until whole segments decode to blanks.
 `tests/make_longform.py` joins the LibriSpeech clips into one to three minute files with 0.3 to 1 s
 gaps, and `tests/score.py` computes word error rate the Open ASR Leaderboard way: Whisper's
 EnglishTextNormalizer on both sides, then `jiwer`. `make compare` and `make longform` feed audio in
-100 ms chunks like the app:
+100 ms chunks like the app. The table below records earlier development measurements;
+rerun those commands to measure the current build:
 
 | Version | Long files | Short clips |
 |---|---|---|
 | state carried across cuts, 13 s windows | about 9% (counted before the scorer existed) | 0.20% |
 | pause commits, overlap join, fresh decoder | 0.20% | 0.20% |
 
-The remaining errors are the model's own ("bade fare" for "bade fair", "Murcheston"). Pause
+Those runs included model errors such as "bade fare" for "bade fair" and "Murcheston". Pause
 decisions use only the audio heard so far, so feeding a whole file at once can cut differently
 (0.40% on the long files).
 
@@ -199,7 +200,8 @@ automatically by the app and CLI from `~/Library/Application Support/Paraketto/m
 - `make decoder-export`: one Core ML model that advances the LSTM with the emitted token and
   decides the next frame, replacing two framework calls per token step with one (35 MB).
 
-Measured on the 17 LibriSpeech clips on an M1 Max, same transcripts in every configuration:
+Historical measurements on the 17 LibriSpeech clips on an M1 Max, with the same transcripts
+in every configuration (these timings have not been remeasured for the current build):
 
 | Configuration | RTFx |
 |---|---|
@@ -207,7 +209,7 @@ Measured on the 17 LibriSpeech clips on an M1 Max, same transcripts in every con
 | + fused decoder step | 93x |
 | + multi-window encoder | 124x |
 
-The remaining time is split between the encoder on the ANE (17 to 55 ms depending on window) and
+In those measurements, time was split between the encoder on the ANE (17 to 55 ms depending on window) and
 the sequential decode on the CPU: 0.73 ms per emitted token inside the fused step, bound by
 streaming the fp32 LSTM and joint weights through one core (Core ML's per-call floor is 35 µs, and
 smaller weights do not help because the CPU path expands them at load). A Metal decoder that ran
@@ -244,8 +246,8 @@ These tests check repeated model loading, silence and quiet speech, long-recordi
 memory and VAD timing, file imports, and cancellation.
 
 `tests/fixtures/librispeech_fluidaudio.tsv` holds FluidAudio's transcripts of 17 LibriSpeech
-clips. `make compare` transcribes `data/librispeech/*.wav` (set `CLIPS=` to another location) and reports every
-difference and the real-time factor. Result at the time of writing: 15 of 17 identical. The two
+clips. `make compare` transcribes `data/librispeech/*.wav` (set `CLIPS=` to another location) and reports
+differences and the real-time factor. An earlier run matched 15 of 17 transcripts. The two
 differences are a British/American spelling choice
 on a clip cut differently, and a trailing period that FluidAudio drops because it discards any
 token whose duration runs past the end of the audio, which standard TDT decoding does not.
@@ -277,6 +279,7 @@ VAD strip, and `PARAKEET_DEBUG=1` logs every joint decision.
 | `TranscriptsView.swift` | grouped transcript list, import status and drop target |
 | `TranscriptRow.swift` | four-line preview, expansion, hover actions and copy feedback |
 | `ModelPreparation.swift` | headless model preparation for builds |
+| `ModelPreparationRecord.swift` | remembers successful preparation to distinguish Optimizing from Loading |
 | `ParakeetArtwork.swift` | loads menu-bar assets derived from `Resources/paraketto.png` |
 | `Log.swift` | `~/Library/Logs/Paraketto.log`, truncated per launch, never contains transcripts |
 

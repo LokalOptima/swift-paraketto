@@ -37,10 +37,6 @@ struct ParakettoApp: App {
             TranscriptsView(controller: appDelegate.controller)
         }
         .defaultSize(width: 560, height: 480)
-
-        Settings {
-            SettingsView(settings: appDelegate.controller.shortcuts)
-        }
     }
 }
 

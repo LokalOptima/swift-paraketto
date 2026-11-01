@@ -120,7 +120,7 @@ enum Shortcut: Codable, Equatable {
 @MainActor
 final class ShortcutSettings: ObservableObject {
     @Published var shortcut: Shortcut { didSet { save() } }
-    /// True while the recorder in Settings is waiting for a key; the shortcut is disarmed meanwhile.
+    /// True while the recorder in the menu is waiting for a key; the shortcut is disarmed meanwhile.
     @Published var isRecording = false
 
     private static let key = "shortcut"

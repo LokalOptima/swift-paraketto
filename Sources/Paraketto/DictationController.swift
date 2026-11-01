@@ -117,7 +117,7 @@ final class DictationController: ObservableObject {
         }
     }
 
-    /// (Re)arms the shortcut from settings. Nothing is armed while the Settings recorder is
+    /// (Re)arms the shortcut from settings. Nothing is armed while the menu recorder is
     /// capturing a key, so the current shortcut can be pressed to replace itself.
     private func applyShortcuts() {
         hotkey = nil

@@ -6,7 +6,7 @@ pasted into whatever app has focus. Multilingual
 Neural Engine with Core ML. Audio and transcripts stay on the Mac.
 
 - Menu bar only, no Dock icon
-- Shortcut: tap `Right ⌥` to start and stop a recording, `Esc` discards it. A tap is a press and release under 0.6 s with no other key in between, so Option+letter typing is unaffected. Change it in Settings (`⌘,` from the menu) by tapping another modifier key or pressing any key combination
+- Shortcut: tap `Right ⌥` to start and stop a recording, `Esc` discards it. A tap is a press and release under 0.6 s with no other key in between, so Option+letter typing is unaffected. Click the shortcut beside the status in the menu, then tap another modifier key or press a key combination. Esc or closing the menu cancels the change
 - Transcription runs while you speak: every pause of 0.8 s ends a segment and it is transcribed right away, so when you pause before stopping the text is already there
 - Floating pill while recording: a level meter on a -65 to -25 dBFS scale with 30 ms attack / 160 ms release smoothing; brief peaks are retained between display updates
 - Text is pasted only if the app that had focus when you started still has it; otherwise it is kept in history
@@ -259,7 +259,7 @@ VAD strip, and `PARAKEET_DEBUG=1` logs every joint decision.
 
 | File | Role |
 |---|---|
-| `App.swift` | app entry point, menu-bar/Transcripts/Settings scenes, startup |
+| `App.swift` | app entry point, menu-bar and Transcripts scenes, startup |
 | `MenuBarViews.swift` | status, loading indicators, and menu actions |
 | `MenuControls.swift` | menu action labels and button styling |
 | `MenuBarSecondaryClick.swift` | right-click shortcut to Transcripts |
@@ -267,7 +267,7 @@ VAD strip, and `PARAKEET_DEBUG=1` logs every joint decision.
 | `Hotkey.swift` | Carbon global hotkey for key combinations |
 | `ModifierTap.swift` | bare modifier tap detection via global event monitors |
 | `ShortcutSettings.swift` | shortcut model (modifier tap or chord), persisted in UserDefaults |
-| `SettingsView.swift` | Settings window with the shortcut recorder |
+| `ShortcutRecorder.swift` | inline menu shortcut recorder, with modifier-tap and key-combination capture |
 | `AudioRecorder.swift` | `AVAudioEngine` mic capture to 16 kHz mono Float32, dBFS level smoothing |
 | `RecordingFile.swift` | incremental WAV storage, bounded reads, History handoff and temporary-file cleanup |
 | `AudioFileReader.swift` | bounded decoding/resampling of imported recordings |

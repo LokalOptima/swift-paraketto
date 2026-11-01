@@ -1,43 +1,38 @@
 import AppKit
 import SwiftUI
 
-struct SettingsView: View {
-    @ObservedObject var settings: ShortcutSettings
-
-    var body: some View {
-        Form {
-            Section {
-                LabeledContent("Start and stop dictation") {
-                    ShortcutRecorder(settings: settings)
-                }
-            } footer: {
-                Text("Tap a modifier key such as Right ⌥ on its own, or press a key combination. Esc always discards the current recording.")
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .formStyle(.grouped)
-        .frame(width: 440)
-        .fixedSize(horizontal: false, vertical: true)
-    }
-}
-
 /// A button that captures the next lone modifier tap or key combination as the shortcut.
-private struct ShortcutRecorder: View {
+struct ShortcutRecorder: View {
     @ObservedObject var settings: ShortcutSettings
     @State private var monitors: [Any] = []
     @State private var pendingModifier: UInt16?
     @State private var rejected = false
+    @State private var isHovered = false
 
     var body: some View {
         Button {
             settings.isRecording ? stop() : start()
         } label: {
-            Text(settings.isRecording ? "Press a key…" : settings.shortcut.label)
-                .frame(minWidth: 140)
+            Text(settings.isRecording ? (rejected ? "Add a modifier…" : "Press a key…") : settings.shortcut.label)
+                .font(.callout)
+                .lineLimit(1)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(settings.isRecording ? Color.accentColor.opacity(0.15)
+                              : Color.primary.opacity(isHovered ? 0.08 : 0))
+                }
         }
-        .foregroundStyle(rejected ? .red : .primary)
-        .help(rejected ? "A plain key would block typing. Add a modifier, or use a function key." : "Click, then tap a modifier or press a combination.")
+        .buttonStyle(.plain)
+        .foregroundStyle(settings.isRecording ? (rejected ? Color.red : .primary) : .secondary)
+        .onHover { isHovered = $0 }
+        .accessibilityLabel("Change dictation shortcut")
+        .accessibilityValue(settings.isRecording ? "Waiting for a shortcut" : settings.shortcut.label)
+        .help(rejected ? "A plain key would block typing. Add a modifier, or use a function key." : "Click to change the shortcut. Tap a modifier or press a combination; Esc cancels.")
         .onDisappear(perform: stop)
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in stop() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in stop() }
     }
 
     private func start() {
@@ -70,8 +65,11 @@ private struct ShortcutRecorder: View {
     }
 
     private func stop() {
+        guard settings.isRecording || !monitors.isEmpty else { return }
         for monitor in monitors { NSEvent.removeMonitor(monitor) }
         monitors = []
+        pendingModifier = nil
+        rejected = false
         settings.isRecording = false
     }
 }

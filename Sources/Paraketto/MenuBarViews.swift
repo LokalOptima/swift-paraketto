@@ -1,5 +1,4 @@
 import SwiftUI
-import ParakeetTDT
 
 struct MenuBarLabel: View {
     @ObservedObject var controller: DictationController
@@ -32,7 +31,6 @@ struct MenuContent: View {
     @ObservedObject var controller: DictationController
     @ObservedObject private var shortcuts: ShortcutSettings
     @Environment(\.openWindow) private var openWindow
-    @Environment(\.openSettings) private var openSettings
 
     init(controller: DictationController) {
         self.controller = controller
@@ -53,10 +51,8 @@ struct MenuContent: View {
                     .lineLimit(1)
                     .layoutPriority(1)
                 Spacer(minLength: 8)
-                Text(shortcuts.shortcut.label)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                ShortcutRecorder(settings: shortcuts)
+                    .disabled(controller.state.isCancellable || controller.isStartingRecording)
             }
             .padding(.horizontal, 8)
             .padding(.top, 6)
@@ -94,13 +90,6 @@ struct MenuContent: View {
             } label: {
                 Text("Transcripts")
             }
-            Button {
-                openSettings()
-                NSApplication.shared.activate(ignoringOtherApps: true)
-            } label: {
-                MenuActionLabel(title: "Settings", shortcut: "⌘,")
-            }
-            .keyboardShortcut(",")
 
             Divider().padding(.vertical, 4)
             Button {

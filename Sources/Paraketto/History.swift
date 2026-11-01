@@ -12,15 +12,27 @@ struct HistoryEntry: Codable, Identifiable, Equatable {
 
     let id: UUID
     let date: Date
-    var text: String
+    /// Persisted verbatim recognition output. Never rewritten by dictionary changes.
+    let text: String
     let destination: String
     let duration: TimeInterval
     var inferenceMilliseconds: Int
     var delivery: Delivery
     var sourceFilename: String? = nil
 
+    // Derived only; deliberately excluded from JSON so the original stays immutable.
+    var replacementResult: ReplacementResult? = nil
+    var displayText: String { replacementResult?.text ?? text }
+    var processed: ReplacementResult {
+        replacementResult ?? ReplacementResult(original: text, text: text, replacements: [])
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, date, text, destination, duration, inferenceMilliseconds, delivery, sourceFilename
+    }
+
     var wordCount: Int {
-        text.split { $0.isWhitespace || $0.isNewline }.count
+        displayText.split { $0.isWhitespace || $0.isNewline }.count
     }
 }
 
@@ -29,13 +41,20 @@ struct HistoryEntry: Codable, Identifiable, Equatable {
 final class HistoryStore: ObservableObject {
     @Published private(set) var entries: [HistoryEntry] = []
 
+    private var matcher = DictionaryMatcher()
+    private var dictionarySubscription: AnyCancellable?
     let directory: URL
 
-    init(directory: URL? = nil) {
+    init(directory: URL? = nil, dictionary: DictionaryStore? = nil) {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         self.directory = directory ?? support.appendingPathComponent("Paraketto/history", isDirectory: true)
         try? FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
         entries = loadAll()
+        dictionarySubscription = dictionary?.$rules.sink { [weak self] rules in
+            guard let self else { return }
+            matcher = DictionaryMatcher(rules: rules)
+            entries = entries.map { self.processed($0) }
+        }
     }
 
     func add(_ entry: HistoryEntry, recording: RecordingFile) throws {
@@ -47,7 +66,25 @@ final class HistoryStore: ObservableObject {
             try? FileManager.default.removeItem(at: audioURL(for: entry))
             throw error
         }
-        entries.insert(entry, at: 0)
+        entries.insert(processed(entry), at: 0)
+    }
+
+    func process(_ text: String) -> ReplacementResult { matcher.apply(to: text) }
+
+    private func processed(_ entry: HistoryEntry) -> HistoryEntry {
+        var result = entry
+        let replacement = process(entry.text)
+        result.replacementResult = replacement.replacements.isEmpty ? nil : replacement
+        return result
+    }
+
+    /// Delivery metadata may change; the saved transcript remains the original.
+    func updateDelivery(id: UUID, to delivery: HistoryEntry.Delivery) throws {
+        guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
+        var entry = entries[index]
+        entry.delivery = delivery
+        try JSONEncoder().encode(entry).write(to: jsonURL(for: entry), options: .atomic)
+        entries[index] = entry
     }
 
     func remove(_ entry: HistoryEntry) {

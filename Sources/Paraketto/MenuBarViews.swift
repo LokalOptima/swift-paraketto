@@ -19,6 +19,7 @@ struct MenuBarLabel: View {
         .accessibilityLabel("Paraketto: \(controller.state.label)")
         .onAppear {
             secondaryClick.start {
+                controller.windowTab = .transcripts
                 openWindow(id: "history")
                 NSApplication.shared.activate(ignoringOtherApps: true)
             }
@@ -85,6 +86,7 @@ struct MenuContent: View {
 
             Divider().padding(.vertical, 4)
             Button {
+                controller.windowTab = .transcripts
                 openWindow(id: "history")
                 NSApplication.shared.activate(ignoringOtherApps: true)
             } label: {

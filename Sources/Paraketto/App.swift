@@ -33,8 +33,8 @@ struct ParakettoApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Window("Transcripts", id: "history") {
-            TranscriptsView(controller: appDelegate.controller)
+        Window("Paraketto", id: "history") {
+            LibraryView(controller: appDelegate.controller)
         }
         .defaultSize(width: 560, height: 480)
     }

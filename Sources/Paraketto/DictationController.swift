@@ -76,7 +76,10 @@ final class DictationController: ObservableObject {
         isModelReady && !isLoadingModel && !isStartingRecording && state.canStartRecording && importTask == nil
     }
 
-    let history = HistoryStore()
+    enum WindowTab: Hashable { case transcripts, dictionary }
+    @Published var windowTab: WindowTab = .transcripts
+    let dictionary: DictionaryStore
+    let history: HistoryStore
     let shortcuts = ShortcutSettings()
 
     private static let noticeDuration: Duration = .seconds(2)
@@ -96,6 +99,12 @@ final class DictationController: ObservableObject {
     /// Coalesces file-length notifications; audio stays on disk if inference falls behind.
     private var audioStream: AsyncStream<Int>.Continuation?
     private var feeder: Task<Void, Never>?
+
+    init() {
+        let dictionary = DictionaryStore()
+        self.dictionary = dictionary
+        history = HistoryStore(dictionary: dictionary)
+    }
 
     func start() {
         Log.startSession()
@@ -353,16 +362,16 @@ final class DictationController: ObservableObject {
                     overlay?.hide()
                     return
                 }
-                let outcome = try await Paster.deliver(text, to: destination)
-                Log.info("delivery: \(outcome)")
-                try history.add(
-                    HistoryEntry(
-                        id: UUID(), date: recordingStarted, text: text,
-                        destination: destination?.name ?? "", duration: duration,
-                        inferenceMilliseconds: inferenceMilliseconds, delivery: delivery(for: outcome)
-                    ),
-                    recording: recording
+                // Keep the original and audio even if paste delivery fails or is cancelled.
+                let entry = HistoryEntry(
+                    id: UUID(), date: recordingStarted, text: text,
+                    destination: destination?.name ?? "", duration: duration,
+                    inferenceMilliseconds: inferenceMilliseconds, delivery: .keptInHistory
                 )
+                try history.add(entry, recording: recording)
+                let outcome = try await Paster.deliver(history.process(text).text, to: destination)
+                Log.info("delivery: \(outcome)")
+                try history.updateDelivery(id: entry.id, to: delivery(for: outcome))
                 switch outcome {
                 case .pasted:
                     state = .idle

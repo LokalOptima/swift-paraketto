@@ -5,6 +5,7 @@ struct TranscriptRow: View {
     let entry: HistoryEntry
     @ObservedObject var store: HistoryStore
     @ObservedObject var player: AudioPlayer
+    let dictionaryAction: (TranscriptDictionaryAction) -> Void
     @State private var expanded = false
     @State private var isTruncated = false
     @State private var isHovered = false
@@ -17,33 +18,14 @@ struct TranscriptRow: View {
     private enum Action: Hashable { case expand, play, copy, delete }
     private var showsActions: Bool { isHovered || focusedAction != nil || voiceOverEnabled }
 
-    private var transcript: String { entry.text.isEmpty ? "No speech detected" : entry.text }
     private var canExpand: Bool { isTruncated || expanded }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top) {
-                Text(transcript)
-                    .lineLimit(expanded ? nil : 4)
-                    .truncationMode(.tail)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
+                TranscriptText(result: entry.processed, expanded: expanded,
+                               isTruncated: $isTruncated, dictionaryAction: dictionaryAction)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background {
-                        GeometryReader { geometry in
-                            VStack(spacing: 0) {
-                                measureText(width: geometry.size.width, lineLimit: nil)
-                                measureText(width: geometry.size.width, lineLimit: 4)
-                            }
-                            .hidden()
-                            .accessibilityHidden(true)
-                            .allowsHitTesting(false)
-                        }
-                    }
-                    .onPreferenceChange(TranscriptTextHeights.self) { heights in
-                        guard let full = heights[0], let collapsed = heights[4] else { return }
-                        isTruncated = full > collapsed + 0.5
-                    }
                 Button(action: toggleExpansion) {
                     Image(systemName: expanded ? "chevron.up" : "chevron.down")
                         .frame(width: 24, height: 18)
@@ -89,19 +71,6 @@ struct TranscriptRow: View {
             catch { return }
             copied = false
         }
-    }
-
-    private func measureText(width: CGFloat, lineLimit: Int?) -> some View {
-        Text(transcript)
-            .lineLimit(lineLimit)
-            .frame(width: width, alignment: .leading)
-            .fixedSize(horizontal: false, vertical: true)
-            .background {
-                GeometryReader { geometry in
-                    Color.clear.preference(key: TranscriptTextHeights.self,
-                                           value: [lineLimit ?? 0: geometry.size.height])
-                }
-            }
     }
 
     private var actions: some View {
@@ -150,7 +119,7 @@ struct TranscriptRow: View {
 
     private func copyTranscript() {
         NSPasteboard.general.clearContents()
-        if NSPasteboard.general.setString(entry.text, forType: .string) {
+        if NSPasteboard.general.setString(entry.displayText, forType: .string) {
             copied = true
             copySequence += 1
         }
@@ -160,12 +129,4 @@ struct TranscriptRow: View {
         withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.15)) { expanded.toggle() }
     }
 
-}
-
-private struct TranscriptTextHeights: PreferenceKey {
-    static let defaultValue: [Int: CGFloat] = [:]
-
-    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
-    }
 }

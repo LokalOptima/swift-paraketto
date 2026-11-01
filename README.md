@@ -11,6 +11,7 @@ Neural Engine with Core ML. Audio and transcripts stay on the Mac.
 - Floating pill while recording: a level meter on a -65 to -25 dBFS scale with 30 ms attack / 160 ms release smoothing; brief peaks are retained between display updates
 - Text is pasted only if the app that had focus when you started still has it; otherwise it is kept in history
 - **Transcripts** (right-click the menu-bar icon, or choose Transcripts in its menu): recordings grouped by day, with playback, copy, delete, and word count stats. Entries show up to four lines; hover to reveal actions and expand longer text
+- **Dictionary** (the other tab in the same window): explicit, case-sensitive replacements with multiple source spellings per target. Select transcript text and right-click to add a rule; highlights show replacements. Rule changes update every stored transcript from its original
 - Drop an audio file onto Transcripts to transcribe it locally, including WAV, M4A and AAC files supported by macOS
 - Supports 25 European languages with automatic detection, punctuation, and capitalization
 - The model downloads on first use (about 613 MB); existing compatible FluidAudio caches are reused
@@ -107,6 +108,37 @@ is not trusted and text is only copied. Two ways out:
   ```
 
   The first `codesign` with the new key may show a keychain dialog; choose "Always Allow".
+
+## Dictionary decisions
+
+The Transcripts and Dictionary tabs share one window. Dictionary entries contain a target
+(**TO**) and one or more explicit spellings (**FROMS**), with search and an add button.
+Selected transcript text can be added through **Add to dictionary…**; outer whitespace is
+trimmed and selections containing replacements map back to the original recognition text.
+Partial selections of a replacement cannot be added. Replacement highlights show the original
+wording on hover, with actions to edit the rule or remove that alias globally.
+
+Matching is literal and case-sensitive, without Unicode, case, or whitespace normalization.
+Targets are never implicit aliases. At each position the longest eligible alias wins;
+replacement output is never matched again. Conflicting aliases are rejected, not overwritten.
+There is no fuzzy matching, filler removal, or per-occurrence disable switch.
+
+Each entry defaults to strict boundaries: whitespace or the start/end of the transcript.
+**Allow punctuation** additionally permits exactly `,.;()` immediately around an alias, leaving
+those characters untouched. Internal punctuation must still match literally. Emails, URLs,
+and paths are protected in both modes. Protection deliberately favors skipping ambiguous
+address-like tokens over modifying them; for example, `word.example` is protected even if it
+was intended as prose with a missing space.
+
+The existing history JSON `text` remains the immutable original recognition output, and WAV
+files are unchanged. Display text and replacement ranges are derived in memory from a single
+current dictionary snapshot. Every successful rule change synchronously reprocesses all
+transcripts from their originals, including on launch. Copy and new dictation delivery use
+the processed text; text already pasted into other apps is not changed. Removing or editing
+a rule is the way to undo replacements globally; there is no separate Show original control.
+Rules live in `~/Library/Application Support/Paraketto/dictionary.json`.
+Dictionary changes are saved atomically before becoming active. A failed save leaves the
+previous rules active, and an unreadable dictionary is never silently overwritten.
 
 ## Speech recognition
 
@@ -232,7 +264,7 @@ utterance is below perception, so it was removed in favour of the framework path
 
 ### Checking against FluidAudio
 
-`make test` checks file storage, audio decoding, playback, paste delivery, and cache validation
+`make test` checks dictionary matching and selection, original preservation, file storage, audio decoding, playback, paste delivery, and cache validation
 without downloading recognition models. Tests that need the real models are skipped by default.
 After `make prepare-models`, enable them with the LibriSpeech `1995-1826-0002.wav` fixture:
 
@@ -259,7 +291,7 @@ VAD strip, and `PARAKEET_DEBUG=1` logs every joint decision.
 
 | File | Role |
 |---|---|
-| `App.swift` | app entry point, menu-bar and Transcripts scenes, startup |
+| `App.swift` | app entry point, menu-bar and shared library window, startup |
 | `MenuBarViews.swift` | status, loading indicators, and menu actions |
 | `MenuControls.swift` | menu action labels and button styling |
 | `MenuBarSecondaryClick.swift` | right-click shortcut to Transcripts |
@@ -278,6 +310,9 @@ VAD strip, and `PARAKEET_DEBUG=1` logs every joint decision.
 | `AudioPlayer.swift` | playback of one stored recording at a time |
 | `TranscriptsView.swift` | grouped transcript list, import status and drop target |
 | `TranscriptRow.swift` | four-line preview, expansion, hover actions and copy feedback |
+| `TranscriptText.swift` | native selectable text, replacement highlights and dictionary context actions |
+| `Dictionary.swift` | exact matcher, protected address ranges, original/output mapping and atomic rule storage |
+| `DictionaryView.swift` | shared Transcripts/Dictionary tabs, search and rule editor |
 | `ModelPreparation.swift` | headless model preparation for builds |
 | `ModelPreparationRecord.swift` | remembers successful preparation to distinguish Optimizing from Loading |
 | `ParakeetArtwork.swift` | loads menu-bar assets derived from `Resources/paraketto.png` |

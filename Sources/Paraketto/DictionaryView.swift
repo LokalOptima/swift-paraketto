@@ -21,8 +21,10 @@ struct LibraryView: View {
                 .tabItem { Label("Dictionary", systemImage: "character.book.closed") }
                 .tag(DictationController.WindowTab.dictionary)
         }
-        .padding(8)
         .frame(minWidth: 500, minHeight: 380)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .textBackgroundColor).ignoresSafeArea())
+        .toolbarBackground(.hidden, for: .windowToolbar)
         .sheet(item: $draft) { draft in
             DictionaryEditor(store: controller.dictionary, draft: draft)
         }
@@ -61,52 +63,75 @@ struct DictionaryView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search dictionary", text: $query).textFieldStyle(.plain)
-                if !query.isEmpty {
-                    Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.borderless).accessibilityLabel("Clear search")
+            HStack(spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("Search dictionary", text: $query).textFieldStyle(.plain)
+                    if !query.isEmpty {
+                        Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
+                            .buttonStyle(.borderless).accessibilityLabel("Clear search")
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
+                        .allowsHitTesting(false)
                 }
                 Button { edit(DictionaryDraft(rule: DictionaryRule(target: "", aliases: [""]))) } label: {
-                    Image(systemName: "plus")
+                    Image(systemName: "plus").frame(width: 16, height: 16)
                 }
+                .buttonStyle(.bordered)
                 .help("Add dictionary entry").accessibilityLabel("Add dictionary entry")
                 .disabled(store.loadError != nil)
             }
-            .padding(12)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
             Divider()
-            if let error = store.loadError {
-                ContentUnavailableView("Dictionary unavailable", systemImage: "exclamationmark.triangle", description: Text(error))
-            } else if filtered.isEmpty {
-                ContentUnavailableView(query.isEmpty ? "No replacements yet" : "No matches",
-                                       systemImage: "character.book.closed",
-                                       description: Text(query.isEmpty ? "Add a target spelling and the spellings to replace." : "Try another spelling."))
-            } else {
-                List(filtered) { rule in
-                    HStack(alignment: .top, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(rule.target).fontWeight(.semibold)
-                            Text(rule.aliases.joined(separator: "  ·  ")).foregroundStyle(.secondary)
-                            Text(rule.allowsPunctuation ? "Allows , . ; ( )" : "Strict boundaries")
-                                .font(.caption).foregroundStyle(.tertiary)
+            Group {
+                if let error = store.loadError {
+                    Text(error).foregroundStyle(.secondary).padding(24)
+                } else if filtered.isEmpty {
+                    VStack(spacing: 6) {
+                        Text(query.isEmpty ? "No replacements yet" : "No matches")
+                        if query.isEmpty {
+                            Text("Add a target spelling and the spellings to replace.")
+                                .font(.caption)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        Button { edit(DictionaryDraft(rule: rule)) } label: { Image(systemName: "pencil") }
-                            .help("Edit rule").accessibilityLabel("Edit \(rule.target)")
-                        Button { deletion = rule } label: { Image(systemName: "trash") }
-                            .help("Delete rule").accessibilityLabel("Delete \(rule.target)")
                     }
-                    .buttonStyle(.borderless)
-                    .padding(.vertical, 6)
-                    .contextMenu {
-                        Button("Edit rule…") { edit(DictionaryDraft(rule: rule)) }
-                        Button("Delete rule…", role: .destructive) { deletion = rule }
+                    .foregroundStyle(.secondary)
+                } else {
+                    List(filtered) { rule in
+                        HStack(alignment: .top, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(rule.target).fontWeight(.semibold)
+                                Text(rule.aliases.joined(separator: "  ·  ")).foregroundStyle(.secondary)
+                                Text(rule.allowsPunctuation ? "Allows , . ; ( )" : "Strict boundaries")
+                                    .font(.caption).foregroundStyle(.tertiary)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            Button { edit(DictionaryDraft(rule: rule)) } label: { Image(systemName: "pencil") }
+                                .help("Edit rule").accessibilityLabel("Edit \(rule.target)")
+                            Button { deletion = rule } label: { Image(systemName: "trash") }
+                                .help("Delete rule").accessibilityLabel("Delete \(rule.target)")
+                        }
+                        .buttonStyle(.borderless)
+                        .padding(.vertical, 6)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                        .contextMenu {
+                            Button("Edit rule…") { edit(DictionaryDraft(rule: rule)) }
+                            Button("Delete rule…", role: .destructive) { deletion = rule }
+                        }
                     }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
                 }
-                .listStyle(.plain)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color(nsColor: .textBackgroundColor))
         .confirmationDialog("Delete this rule?", isPresented: Binding(get: { deletion != nil }, set: { if !$0 { deletion = nil } }), titleVisibility: .visible) {
             Button("Delete rule", role: .destructive) {

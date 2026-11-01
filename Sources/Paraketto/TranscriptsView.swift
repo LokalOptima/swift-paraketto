@@ -95,8 +95,7 @@ struct TranscriptsView: View {
         }
         .frame(minWidth: 460, minHeight: 320)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .textBackgroundColor).ignoresSafeArea())
-        .toolbarBackground(.hidden, for: .windowToolbar)
+        .background(Color(nsColor: .textBackgroundColor))
         .overlay {
             if isDropTargeted {
                 AudioFileDropOverlay(isAvailable: controller.canImportFiles)

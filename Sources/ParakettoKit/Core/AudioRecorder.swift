@@ -111,7 +111,7 @@ final class AudioRecorder {
 
         var errorDescription: String? {
             switch self {
-            case .noInputDevice: return "No microphone input device is available."
+            case .noInputDevice: return "No microphone"
             }
         }
     }

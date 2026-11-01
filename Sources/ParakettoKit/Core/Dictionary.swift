@@ -5,7 +5,6 @@ struct DictionaryRule: Codable, Equatable, Identifiable {
     var id = UUID()
     var target: String
     var aliases: [String]
-    var allowsPunctuation = false
 }
 
 struct Replacement: Equatable {
@@ -62,14 +61,13 @@ struct DictionaryMatcher {
         let ruleID: UUID
         let alias: String
         let target: [UInt16]
-        let allowsPunctuation: Bool
     }
     private struct Node {
         var children: [UInt16: Int] = [:]
         var candidate: Candidate?
     }
     private var nodes = [Node()]
-    private static let punctuation = Set(",.;()".utf16)
+    private static let trailingPunctuation = Set(".,;'\"?!)’”".utf16)
     private static let tokens = try! NSRegularExpression(pattern: #"\S+"#)
     private static let domain = try! NSRegularExpression(pattern: #"[\p{L}\p{N}_-]+\.[\p{L}\p{N}_-]+"#)
     private static let scheme = try! NSRegularExpression(pattern: #"[A-Za-z][A-Za-z0-9+.-]*:"#)
@@ -89,9 +87,7 @@ struct DictionaryMatcher {
                         node = child
                     }
                 }
-                nodes[node].candidate = Candidate(ruleID: rule.id, alias: alias,
-                                                   target: Array(rule.target.utf16),
-                                                   allowsPunctuation: rule.allowsPunctuation)
+                nodes[node].candidate = Candidate(ruleID: rule.id, alias: alias, target: Array(rule.target.utf16))
             }
         }
     }
@@ -115,21 +111,24 @@ struct DictionaryMatcher {
         var output: [UInt16] = []
         var replacements: [Replacement] = []
         var position = 0
-        func boundary(_ index: Int, punctuation: Bool) -> Bool {
+        func isBreak(_ index: Int) -> Bool {
             index < 0 || index >= input.count || ReplacementResult.isWhitespace(input[index])
-                || (punctuation && Self.punctuation.contains(input[index]))
+        }
+        // Punctuation may follow an alias only if the word ends there: "don" must not match in "don't".
+        func endsWord(_ index: Int) -> Bool {
+            var end = index
+            while end < input.count, Self.trailingPunctuation.contains(input[end]) { end += 1 }
+            return isBreak(end)
         }
         while position < input.count {
             var node = 0
             var cursor = position
             var best: (Candidate, Int)?
-            if boundary(position - 1, punctuation: true) {
+            if isBreak(position - 1) {
                 while cursor < input.count, let child = nodes[node].children[input[cursor]] {
                     node = child
                     cursor += 1
-                    if let candidate = nodes[node].candidate,
-                       boundary(position - 1, punctuation: candidate.allowsPunctuation),
-                       boundary(cursor, punctuation: candidate.allowsPunctuation),
+                    if let candidate = nodes[node].candidate, endsWord(cursor),
                        protectedCount[cursor] == protectedCount[position] {
                         best = (candidate, cursor)
                     }

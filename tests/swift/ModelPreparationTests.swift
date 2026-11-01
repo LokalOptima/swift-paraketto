@@ -1,5 +1,5 @@
 import XCTest
-@testable import Paraketto
+@testable import ParakettoKit
 
 final class ModelPreparationTests: XCTestCase {
     func testPreparationIsRememberedAndInvalidatedByChangedWeightsOrOS() throws {

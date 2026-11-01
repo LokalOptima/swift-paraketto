@@ -52,8 +52,10 @@ final class DictationController: ObservableObject {
     }
 
     @Published private(set) var state: State = .loadingModel {
-        didSet { if state != oldValue { Log.info("state: \(state.label)") } }
+        didSet { if state != oldValue, !isPreview { Log.info("state: \(state.label)") } }
     }
+    /// Set for Xcode's canvas, which must not write to the user's log or load models.
+    private var isPreview = false
     @Published private(set) var inputLevel: Float = 0
     @Published private(set) var elapsed: TimeInterval = 0
     @Published private(set) var destination: Destination?
@@ -80,7 +82,7 @@ final class DictationController: ObservableObject {
     @Published var windowTab: WindowTab = .transcripts
     let dictionary: DictionaryStore
     let history: HistoryStore
-    let shortcuts = ShortcutSettings()
+    let shortcuts: ShortcutSettings
 
     private static let noticeDuration: Duration = .seconds(2)
     private static let meterInterval: Duration = .milliseconds(50)
@@ -100,10 +102,11 @@ final class DictationController: ObservableObject {
     private var audioStream: AsyncStream<Int>.Continuation?
     private var feeder: Task<Void, Never>?
 
-    init() {
-        let dictionary = DictionaryStore()
+    init(dictionary: DictionaryStore? = nil, historyDirectory: URL? = nil, shortcuts: ShortcutSettings? = nil) {
+        let dictionary = dictionary ?? DictionaryStore()
         self.dictionary = dictionary
-        history = HistoryStore(dictionary: dictionary)
+        self.shortcuts = shortcuts ?? ShortcutSettings()
+        history = HistoryStore(directory: historyDirectory, dictionary: dictionary)
     }
 
     func start() {
@@ -136,8 +139,8 @@ final class DictationController: ObservableObject {
         case .chord(let chord):
             let hotkey = Hotkey(binding: Hotkey.Binding(chord), onPress: { [weak self] in self?.toggleRecording() })
             self.hotkey = hotkey
-            if let error = hotkey.registrationError, state == .idle {
-                show(.failed("\(chord.label) is taken by another app (\(error))"))
+            if hotkey.registrationError != nil, state == .idle {
+                show(.failed("Shortcut in use"))
             }
         case .tap(let key):
             modifierTap = ModifierTap(key) { [weak self] in self?.toggleRecording() }
@@ -209,7 +212,7 @@ final class DictationController: ObservableObject {
     }
 
     func retryModelLoad() {
-        guard !isLoadingModel, !isModelReady else { return }
+        guard !isLoadingModel, !isModelReady, !isPreview else { return }
         // Reserve the transition synchronously, before another shortcut/menu action can run.
         isLoadingModel = true
         state = .loadingModel
@@ -279,7 +282,7 @@ final class DictationController: ObservableObject {
         Task {
             defer { isStartingRecording = false }
             guard await AudioRecorder.requestMicrophoneAccess() else {
-                show(.failed("Microphone access denied"))
+                show(.failed("No mic access"))
                 return
             }
             guard state.canStartRecording, !isLoadingModel else { return }
@@ -317,7 +320,7 @@ final class DictationController: ObservableObject {
                 audioStream = nil
                 await transcriber.discard()
                 Log.info("Recorder start failed: \(error)")
-                show(.failed(error.localizedDescription))
+                show(.failed(error is AudioRecorder.RecorderError ? error.localizedDescription : "Can’t record"))
             }
         }
     }
@@ -327,12 +330,13 @@ final class DictationController: ObservableObject {
         let recording: RecordingFile
         do { recording = try recorder.stop() }
         catch {
+            Log.info("Recorder stop failed: \(error)")
             audioStream?.finish()
             audioStream = nil
             feeder?.cancel()
             feeder = Task { [transcriber, feeder] in await feeder?.value; await transcriber.discard() }
             finishSession()
-            show(.failed(error.localizedDescription))
+            show(.failed("Recording failed"))
             return
         }
         audioStream?.finish()
@@ -386,7 +390,7 @@ final class DictationController: ObservableObject {
             } catch {
                 Log.info("Transcription failed: \(error)")
                 finishSession()
-                show(.failed(error.localizedDescription))
+                show(.failed("Dictation failed"))
             }
         }
     }
@@ -432,6 +436,7 @@ final class DictationController: ObservableObject {
     }
 
     /// Shows a transient message in the pill, then returns to idle so the hotkey keeps working.
+    /// The pill truncates anything past about 16 characters, so details belong in the log.
     private func show(_ transient: State) {
         state = transient
         overlay?.show()
@@ -443,3 +448,26 @@ final class DictationController: ObservableObject {
         }
     }
 }
+
+#if DEBUG
+extension DictationController {
+    /// Sets what the views observe, for Xcode's canvas. Starts no audio, model load or hotkey.
+    func showPreview(_ state: State, modelError: String? = nil,
+                     fileImport: FileImportStatus? = nil, importErrors: [String] = []) {
+        isPreview = true
+        self.state = state
+        self.modelError = modelError
+        self.fileImport = fileImport
+        self.importErrors = importErrors
+        switch state {
+        case .downloadingModel, .optimizingModel, .loadingModel: isLoadingModel = true
+        default: isLoadingModel = false
+        }
+    }
+
+    func showPreviewMeter(level: Float, elapsed: TimeInterval) {
+        inputLevel = level
+        self.elapsed = elapsed
+    }
+}
+#endif

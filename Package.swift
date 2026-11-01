@@ -4,6 +4,9 @@ import PackageDescription
 let package = Package(
     name: "Paraketto",
     platforms: [.macOS(.v14)],
+    products: [
+        .library(name: "ParakettoKit", targets: ["ParakettoKit"]),
+    ],
     targets: [
         // Parakeet TDT inference with Core ML: model download, mel, encoder, greedy TDT decode, VAD segmentation.
         .target(
@@ -11,11 +14,18 @@ let package = Package(
             path: "Sources/ParakeetTDT",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
-        // The menu bar dictation app.
-        .executableTarget(
-            name: "Paraketto",
+        // The app itself, as a library so Xcode can preview its views and Paraketto.xcodeproj can link it.
+        .target(
+            name: "ParakettoKit",
             dependencies: ["ParakeetTDT"],
-            path: "Sources/Paraketto",
+            path: "Sources/ParakettoKit",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        // Only the process entry point, for `swift build` and `make bundle`.
+        .executableTarget(
+            name: "ParakettoLauncher",
+            dependencies: ["ParakettoKit"],
+            path: "Sources/ParakettoLauncher",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         // Command-line transcription for testing and benchmarking against reference transcripts.
@@ -27,7 +37,7 @@ let package = Package(
         ),
         .testTarget(
             name: "ParakettoTests",
-            dependencies: ["ParakeetTDT", "Paraketto"],
+            dependencies: ["ParakeetTDT", "ParakettoKit"],
             path: "tests/swift",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),

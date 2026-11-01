@@ -1,10 +1,10 @@
 import AppKit
 import XCTest
-@testable import Paraketto
+@testable import ParakettoKit
 
 final class DictionaryTests: XCTestCase {
-    private func rule(_ alias: String, _ target: String, punctuation: Bool = false) -> DictionaryRule {
-        DictionaryRule(target: target, aliases: [alias], allowsPunctuation: punctuation)
+    private func rule(_ alias: String, _ target: String) -> DictionaryRule {
+        DictionaryRule(target: target, aliases: [alias])
     }
 
     func testLiteralCaseSensitiveAliasesAndNoImplicitTarget() {
@@ -14,15 +14,34 @@ final class DictionaryTests: XCTestCase {
         XCTAssertEqual(Array(matcher.apply(to: source).text.utf16), Array(expected.utf16))
     }
 
-    func testStrictAndExplicitPunctuationBoundaries() {
+    func testPunctuationAfterAnAliasMatches() {
+        let matcher = DictionaryMatcher(rules: [rule("gee tub", "github")])
         let source = "gee tub gee tub, (gee tub); gee tub. gee tub! gee tub? ‘gee tub’ gee tub: gee,tub xgee tub gee tub_x\ngee tub\tgee tub"
-        let strict = DictionaryMatcher(rules: [rule("gee tub", "github")])
-        XCTAssertEqual(strict.apply(to: source).text,
-                       "github gee tub, (gee tub); gee tub. gee tub! gee tub? ‘gee tub’ gee tub: gee,tub xgee tub gee tub_x\ngithub\tgithub")
-        let punctuation = DictionaryMatcher(rules: [rule("gee tub", "github", punctuation: true)])
-        XCTAssertEqual(punctuation.apply(to: source).text,
-                       "github github, (github); github. gee tub! gee tub? ‘gee tub’ gee tub: gee,tub xgee tub gee tub_x\ngithub\tgithub")
-        XCTAssertEqual(strict.apply(to: "\u{a0}gee tub\u{2003}").text, "\u{a0}github\u{2003}")
+        XCTAssertEqual(matcher.apply(to: source).text,
+                       "github github, (gee tub); github. github! github? ‘gee tub’ gee tub: gee,tub xgee tub gee tub_x\ngithub\tgithub")
+        XCTAssertEqual(matcher.apply(to: "\u{a0}gee tub\u{2003}").text, "\u{a0}github\u{2003}")
+        XCTAssertEqual(matcher.apply(to: "gee tub' gee tub\" gee tub?! gee tub.\" gee tub) gee tub’ gee tub”").text,
+                       "github' github\" github?! github.\" github) github’ github”")
+        XCTAssertEqual(DictionaryMatcher(rules: [rule("pulp size", "pop. size")]).apply(to: "the pulp size.").text, "the pop. size.")
+        XCTAssertEqual(DictionaryMatcher(rules: [rule("blah blah,", "BLAH")]).apply(to: "blah blah, next blah blah.").text,
+                       "BLAH next blah blah.")
+    }
+
+    func testPunctuationMustEndTheWord() {
+        let matcher = DictionaryMatcher(rules: [rule("don", "X"), rule("it", "X"), rule("3", "X"), rule("gee tub", "X")])
+        let untouched = "don't it's 3.5 gee tub's gee tub,next gee tub.next"
+        XCTAssertEqual(matcher.apply(to: untouched).text, untouched)
+    }
+
+    @MainActor
+    func testDictionariesWithTheOldPunctuationOptionStillLoad() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let id = UUID()
+        try Data(#"[{"id":"\#(id.uuidString)","target":"pop. size","aliases":["pulp size"],"allowsPunctuation":false}]"#.utf8).write(to: url)
+        let store = DictionaryStore(url: url)
+        XCTAssertNil(store.loadError)
+        XCTAssertEqual(store.rules, [DictionaryRule(id: id, target: "pop. size", aliases: ["pulp size"])])
     }
 
     func testAddressesAndPathsAreProtectedEvenWithPunctuation() {
@@ -34,20 +53,18 @@ final class DictionaryTests: XCTestCase {
             "us.例子", "us.Example", "us@example.com,us", "https://example.com?q=(us)",
             "\"hello us, world\"@example.com", "urn:example;(us)", "data:text/plain,us", "name+us@example.com", "https://example.com/path;us", "https://example.com/#(us)",
         ]
-        for allow in [false, true] {
-            let matcher = DictionaryMatcher(rules: [rule("us", "US", punctuation: allow), rule("example", "EXAMPLE", punctuation: allow)])
-            for text in protected { XCTAssertEqual(matcher.apply(to: text).text, text, text) }
-        }
+        let matcher = DictionaryMatcher(rules: [rule("us", "US"), rule("example", "EXAMPLE")])
+        for text in protected { XCTAssertEqual(matcher.apply(to: text).text, text, text) }
         // A multiword alias must not swallow part of a protected token.
-        XCTAssertEqual(DictionaryMatcher(rules: [rule("hello us", "X", punctuation: true)])
+        XCTAssertEqual(DictionaryMatcher(rules: [rule("hello us", "X")])
             .apply(to: "hello us.example").text, "hello us.example")
-        XCTAssertEqual(DictionaryMatcher(rules: [rule("us", "US", punctuation: true)])
-            .apply(to: "(us), us. us; us").text, "(US), US. US; US")
+        XCTAssertEqual(DictionaryMatcher(rules: [rule("us", "US")])
+            .apply(to: "(us), us. us; us").text, "(us), US. US; US")
     }
 
     func testLongestEligibleLeftmostAndNoCascade() {
-        let matcher = DictionaryMatcher(rules: [rule("a", "b", punctuation: true), rule("a b", "long"), rule("b", "c")])
-        XCTAssertEqual(matcher.apply(to: "a b a b, a").text, "long b b, b")
+        let matcher = DictionaryMatcher(rules: [rule("a", "b"), rule("a b", "long"), rule("b", "c")])
+        XCTAssertEqual(matcher.apply(to: "a b a bx, a").text, "long b bx, b")
         let overlapping = DictionaryMatcher(rules: [rule("a b", "first"), rule("b c", "second")])
         XCTAssertEqual(overlapping.apply(to: "a b c").text, "first c")
     }
@@ -72,8 +89,8 @@ final class DictionaryTests: XCTestCase {
     }
 
     func testGeneratedEditsRoundTripExactlyAndDoNotDependOnRuleOrder() {
-        let rules = [rule("gee tub", "GitHub", punctuation: true), rule("yo", "🦜 café"),
-                     rule("a", "b", punctuation: true), rule("a b", "long"),
+        let rules = [rule("gee tub", "GitHub"), rule("yo", "🦜 café"),
+                     rule("a", "b"), rule("a b", "long"),
                      rule("é", "one"), rule("e\u{301}", "two")]
         let forward = DictionaryMatcher(rules: rules)
         let reverse = DictionaryMatcher(rules: rules.reversed())
@@ -153,9 +170,6 @@ final class DictionaryTests: XCTestCase {
         let originalJSON = try Data(contentsOf: json)
         let originalAudio = try Data(contentsOf: history.audioURL(for: entry))
         var replacement = rule("gee tub", "github")
-        try dictionary.save(replacement)
-        XCTAssertEqual(history.entries.first?.displayText, "gee tub, github")
-        replacement.allowsPunctuation = true
         try dictionary.save(replacement)
         XCTAssertEqual(history.entries.first?.displayText, "github, github")
         replacement.target = "GitHub"

@@ -1,0 +1,248 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		7C0000000000000000000007 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C0000000000000000000006 /* main.swift */; };
+		7C0000000000000000000009 /* ParakettoKit in Frameworks */ = {isa = PBXBuildFile; productRef = 7C0000000000000000000008 /* ParakettoKit */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		7C0000000000000000000005 /* Paraketto.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Paraketto.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7C0000000000000000000006 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = main.swift; path = Sources/ParakettoLauncher/main.swift; sourceTree = SOURCE_ROOT; };
+		7C0000000000000000000014 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = Resources/Info.plist; sourceTree = SOURCE_ROOT; };
+		7C0000000000000000000015 /* Paraketto.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = Paraketto.entitlements; path = Resources/Paraketto.entitlements; sourceTree = SOURCE_ROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		7C000000000000000000000B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7C0000000000000000000009 /* ParakettoKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		7C0000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				7C0000000000000000000016 /* App */,
+				7C0000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		7C0000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				7C0000000000000000000005 /* Paraketto.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		7C0000000000000000000016 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				7C0000000000000000000006 /* main.swift */,
+				7C0000000000000000000014 /* Info.plist */,
+				7C0000000000000000000015 /* Paraketto.entitlements */,
+			);
+			name = App;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		7C0000000000000000000004 /* Paraketto */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7C000000000000000000000E /* Build configuration list for PBXNativeTarget "Paraketto" */;
+			buildPhases = (
+				7C000000000000000000000A /* Sources */,
+				7C000000000000000000000B /* Frameworks */,
+				7C000000000000000000000C /* Add resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Paraketto;
+			packageProductDependencies = (
+				7C0000000000000000000008 /* ParakettoKit */,
+			);
+			productName = Paraketto;
+			productReference = 7C0000000000000000000005 /* Paraketto.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		7C0000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1640;
+				LastUpgradeCheck = 1640;
+			};
+			buildConfigurationList = 7C000000000000000000000D /* Build configuration list for PBXProject "Paraketto" */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 7C0000000000000000000002;
+			packageReferences = (
+				7C0000000000000000000013 /* XCLocalSwiftPackageReference "." */,
+			);
+			productRefGroup = 7C0000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				7C0000000000000000000004 /* Paraketto */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		7C000000000000000000000C /* Add resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Add resources";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "make -C \"$SRCROOT\" xcode-bundle\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		7C000000000000000000000A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7C0000000000000000000007 /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		7C000000000000000000000F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		7C0000000000000000000010 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		7C0000000000000000000011 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Resources/Paraketto.entitlements;
+				CODE_SIGN_IDENTITY = "Paraketto Dev";
+				CODE_SIGN_STYLE = Manual;
+				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = io.lfrati.paraketto;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		7C0000000000000000000012 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Resources/Paraketto.entitlements;
+				CODE_SIGN_IDENTITY = "Paraketto Dev";
+				CODE_SIGN_STYLE = Manual;
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = io.lfrati.paraketto;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		7C000000000000000000000D /* Build configuration list for PBXProject "Paraketto" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7C000000000000000000000F /* Debug */,
+				7C0000000000000000000010 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		7C000000000000000000000E /* Build configuration list for PBXNativeTarget "Paraketto" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7C0000000000000000000011 /* Debug */,
+				7C0000000000000000000012 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		7C0000000000000000000013 /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		7C0000000000000000000008 /* ParakettoKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ParakettoKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 7C0000000000000000000001 /* Project object */;
+}

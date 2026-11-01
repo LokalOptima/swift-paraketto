@@ -134,13 +134,15 @@ final class ShortcutSettings: ObservableObject {
     @Published var isRecording = false
 
     private static let key = "shortcut"
+    private let defaults: UserDefaults
 
-    init() {
-        shortcut = UserDefaults.standard.data(forKey: Self.key)
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        shortcut = defaults.data(forKey: Self.key)
             .flatMap { try? JSONDecoder().decode(Shortcut.self, from: $0) } ?? .default
     }
 
     private func save() {
-        UserDefaults.standard.set(try? JSONEncoder().encode(shortcut), forKey: Self.key)
+        defaults.set(try? JSONEncoder().encode(shortcut), forKey: Self.key)
     }
 }

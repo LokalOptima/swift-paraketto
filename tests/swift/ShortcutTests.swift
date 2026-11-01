@@ -1,6 +1,6 @@
 import AppKit
 import XCTest
-@testable import Paraketto
+@testable import ParakettoKit
 
 @MainActor
 final class ShortcutTests: XCTestCase {

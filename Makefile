@@ -7,7 +7,7 @@ CONFIG        ?= release
 PREPARE_MODELS ?= 1
 INSTALL_APP   ?= 1
 INSTALL_DIR   ?= /Applications
-BINARY        := .build/$(CONFIG)/$(APP_NAME)
+BINARY        := .build/$(CONFIG)/ParakettoLauncher
 CLI           := .build/$(CONFIG)/paraketto-cli
 CONTENTS      := $(BUNDLE)/Contents
 VAD_PACKAGE   := Resources/VadHead.mlpackage
@@ -27,7 +27,7 @@ SIGN_NAME     ?= Paraketto Dev
 SIGN_IDENTITY ?= $(or $(shell security find-identity -p codesigning 2>/dev/null | grep -F '"$(SIGN_NAME)"' | head -1 | awk '{print $$2}'),-)
 SIGN_IDENTITY := $(SIGN_IDENTITY)
 
-.PHONY: all build bundle icons run prepare-models trust vad cli test test-models compare longform vad-export encoder-export decoder-export clean
+.PHONY: all build bundle xcode-bundle icons run prepare-models trust vad cli test test-models compare longform vad-export encoder-export decoder-export clean
 
 MODELS_DIR    := $(HOME)/Library/Application Support/Paraketto/models
 
@@ -81,6 +81,14 @@ ifeq ($(INSTALL_APP),1)
 	/usr/bin/rsync -aE --delete "$(BUNDLE)/" "$(INSTALL_DIR)/$(BUNDLE)/"
 	codesign --verify --deep --strict "$(INSTALL_DIR)/$(BUNDLE)"
 endif
+
+# Last build phase of Paraketto.xcodeproj, which sets these paths in the environment.
+# A signing run cancelled by a newer build leaves a .cstemp that would fail the next signature.
+xcode-bundle: vad icons
+	rm -f "$(TARGET_BUILD_DIR)/$(EXECUTABLE_FOLDER_PATH)/"*.cstemp
+	mkdir -p "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)"
+	cp $(APP_ICON) .build/ParakettoMenu.png "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/"
+	cp -R $(VAD_COMPILED) "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/"
 
 # Explicitly download and prepare Ultra; bundle alone only prepares an installed model.
 prepare-models: bundle

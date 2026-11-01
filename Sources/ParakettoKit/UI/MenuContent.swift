@@ -1,41 +1,15 @@
 import SwiftUI
 
-struct MenuBarLabel: View {
-    @ObservedObject var controller: DictationController
-    @StateObject private var secondaryClick = MenuBarSecondaryClick()
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        Group {
-            switch controller.state {
-            case .idle, .notice:
-                Image(nsImage: ParakeetArtwork.menuIcon)
-            case .recording:
-                Image(nsImage: ParakeetArtwork.recordingIcon)
-            default:
-                Image(systemName: controller.state.symbolName)
-            }
-        }
-        .accessibilityLabel("Paraketto: \(controller.state.label)")
-        .onAppear {
-            secondaryClick.start {
-                controller.windowTab = .transcripts
-                openWindow(id: "history")
-                NSApplication.shared.activate(ignoringOtherApps: true)
-            }
-        }
-        .onDisappear { secondaryClick.stop() }
-    }
-}
-
 struct MenuContent: View {
     @ObservedObject var controller: DictationController
     @ObservedObject private var shortcuts: ShortcutSettings
+    private let isAccessibilityTrusted: () -> Bool
     @Environment(\.openWindow) private var openWindow
 
-    init(controller: DictationController) {
+    init(controller: DictationController, isAccessibilityTrusted: @escaping () -> Bool = { Paster.isAccessibilityTrusted }) {
         self.controller = controller
         shortcuts = controller.shortcuts
+        self.isAccessibilityTrusted = isAccessibilityTrusted
     }
 
     var body: some View {
@@ -53,6 +27,7 @@ struct MenuContent: View {
                     .layoutPriority(1)
                 Spacer(minLength: 8)
                 ShortcutRecorder(settings: shortcuts)
+                    .fixedSize()
                     .disabled(controller.state.isCancellable || controller.isStartingRecording)
             }
             .padding(.horizontal, 8)
@@ -79,7 +54,7 @@ struct MenuContent: View {
                     .disabled(controller.isLoadingModel)
             }
 
-            if !Paster.isAccessibilityTrusted {
+            if !isAccessibilityTrusted() {
                 Divider().padding(.vertical, 4)
                 Button("Grant Accessibility…") { Paster.openAccessibilitySettings() }
             }
@@ -115,3 +90,18 @@ struct MenuContent: View {
         }
     }
 }
+
+#if DEBUG
+#Preview("Ready") { MenuPreview(.idle) }
+#Preview("Needs Accessibility") { MenuPreview(.idle, isAccessibilityTrusted: false) }
+#Preview("Downloading") { MenuPreview(.downloadingModel(0.42)) }
+#Preview("Optimizing") { MenuPreview(.optimizingModel) }
+#Preview("Loading") { MenuPreview(.loadingModel) }
+#Preview("Recording") { MenuPreview(.recording) }
+#Preview("Transcribing") { MenuPreview(.transcribing) }
+#Preview("Notice") { MenuPreview(.notice("Kept in history")) }
+#Preview("Model failed") {
+    MenuPreview(.failed("The network connection was lost."),
+                modelError: "Could not load model: The network connection was lost.")
+}
+#endif

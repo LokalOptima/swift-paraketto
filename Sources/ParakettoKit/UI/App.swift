@@ -1,9 +1,8 @@
 import SwiftUI
 
-@main
-enum ParakettoMain {
+public enum ParakettoMain {
     @MainActor
-    static func main() {
+    public static func main() {
         if CommandLine.arguments.contains("--prepare-models") {
             let cachedOnly = CommandLine.arguments.contains("--cached-only")
             Task.detached {
@@ -35,6 +34,9 @@ struct ParakettoApp: App {
 
         Window("Paraketto", id: "history") {
             LibraryView(controller: appDelegate.controller)
+                // Cmd-Tab only lists regular apps, so be one while this window is open.
+                .onAppear { NSApplication.shared.setActivationPolicy(.regular) }
+                .onDisappear { NSApplication.shared.setActivationPolicy(.accessory) }
         }
         .defaultSize(width: 560, height: 480)
     }
@@ -43,9 +45,22 @@ struct ParakettoApp: App {
 /// Starts dictation at launch. The menu content only exists while the menu is open,
 /// so the hotkey and model load cannot be tied to it.
 final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
-    @MainActor let controller = DictationController()
+    #if DEBUG
+    @MainActor private lazy var previewData = PreviewFixtures()
+    #endif
+    @MainActor lazy var controller: DictationController = {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" {
+            return previewData.controller
+        }
+        #endif
+        return DictationController()
+    }()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        #if DEBUG
+        guard ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] != "1" else { return }
+        #endif
         controller.start()
     }
 }

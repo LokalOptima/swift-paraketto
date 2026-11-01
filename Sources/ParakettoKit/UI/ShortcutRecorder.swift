@@ -14,27 +14,14 @@ struct ShortcutRecorder: View {
     @State private var hitArea = NSView()
 
     var body: some View {
-        Button {
+        ShortcutButton(title: buttonTitle, isRecording: settings.isRecording, isWaiting: isWaitingForInput,
+                       isRejected: rejected, didSave: didSave, isHovered: isHovered, hitArea: hitArea) {
             settings.isRecording ? stop() : start()
-        } label: {
-            Text(buttonTitle)
-                .lineLimit(1)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .contentShape(RoundedRectangle(cornerRadius: 4))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 4)
-                        .strokeBorder(outlineColor, lineWidth: settings.isRecording || didSave ? 1.5 : 1)
-                }
-                .background(ShortcutButtonHitArea(view: hitArea).allowsHitTesting(false))
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(rejected ? Color.red : isWaitingForInput ? .secondary : .primary)
         .onHover { isHovered = $0 }
         .accessibilityLabel("Change dictation shortcut")
         .accessibilityValue(captureDescription)
         .help(rejected ? "This shortcut needs a held modifier or a function key. Esc cancels." : "Click to change the shortcut. Tap a modifier or press a combination; Esc cancels.")
-        .font(.callout)
         .task(id: didSave) {
             guard didSave else { return }
             do { try await Task.sleep(for: .milliseconds(600)) }
@@ -48,13 +35,6 @@ struct ShortcutRecorder: View {
 
     private var buttonTitle: String {
         settings.isRecording ? capturedLabel ?? "…" : savedTitle
-    }
-
-    private var outlineColor: Color {
-        if rejected { return .red }
-        if settings.isRecording { return .blue }
-        if didSave { return Color(nsColor: .systemGreen) }
-        return .primary.opacity(isHovered ? 0.5 : 0.3)
     }
 
     private var isWaitingForInput: Bool { settings.isRecording && capturedLabel == nil }
@@ -141,9 +121,59 @@ struct ShortcutRecorder: View {
     }
 }
 
+/// The button's look in one capture state, without the event monitors,
+/// so previews can hold states that the recorder only passes through.
+struct ShortcutButton: View {
+    let title: String
+    var isRecording = false
+    var isWaiting = false
+    var isRejected = false
+    var didSave = false
+    var isHovered = false
+    var hitArea = NSView()
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            action()
+        } label: {
+            Text(title)
+                .lineLimit(1)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .contentShape(RoundedRectangle(cornerRadius: 4))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 4)
+                        .strokeBorder(outlineColor, lineWidth: isRecording || didSave ? 1.5 : 1)
+                }
+                .background(ShortcutButtonHitArea(view: hitArea).allowsHitTesting(false))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(isRejected ? Color.red : isWaiting ? .secondary : .primary)
+        .font(.callout)
+    }
+
+    private var outlineColor: Color {
+        if isRejected { return .red }
+        if isRecording { return .blue }
+        if didSave { return Color(nsColor: .systemGreen) }
+        return .primary.opacity(isHovered ? 0.5 : 0.3)
+    }
+}
+
 /// Native coordinates let click-away cancellation work anywhere in the menu.
 private struct ShortcutButtonHitArea: NSViewRepresentable {
     let view: NSView
     func makeNSView(context: Context) -> NSView { view }
     func updateNSView(_ nsView: NSView, context: Context) {}
 }
+
+#if DEBUG
+#Preview("All states") {
+    ShortcutStatesPreview()
+}
+
+#Preview("Interactive") {
+    ShortcutRecorderPreview()
+}
+#endif

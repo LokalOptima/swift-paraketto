@@ -60,6 +60,7 @@ struct TranscriptsView: View {
                     systemImage: "mic",
                     description: Text("Start and stop with \(shortcuts.shortcut.label).")
                 )
+                .frame(maxHeight: .infinity)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
@@ -161,3 +162,35 @@ struct AudioFileDropOverlay: View {
             }
     }
 }
+
+#if DEBUG
+#Preview("Transcripts") {
+    LibraryPreview()
+}
+
+#Preview("Empty transcripts") {
+    LibraryPreview(empty: true)
+}
+
+#Preview("Importing") {
+    LibraryPreview(fileImport: .init(filename: "Team meeting.m4a", progress: 0.42))
+}
+
+#Preview("Import failed") {
+    LibraryPreview(importErrors: ["Team meeting.m4a: The operation could not be completed.",
+                                  "notes.txt: The file is not an audio file."])
+}
+
+#Preview("Importing with errors") {
+    LibraryPreview(fileImport: .init(filename: "Interview.wav", progress: 0.8),
+                   importErrors: ["notes.txt: The file is not an audio file."])
+}
+
+#Preview("Drop audio files") {
+    LibraryPreview().overlay { AudioFileDropOverlay(isAvailable: true).padding(12) }
+}
+
+#Preview("Drop while busy") {
+    LibraryPreview().overlay { AudioFileDropOverlay(isAvailable: false).padding(12) }
+}
+#endif

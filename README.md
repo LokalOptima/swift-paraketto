@@ -5,10 +5,10 @@ pasted into whatever app has focus. Multilingual
 [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) runs on the Apple
 Neural Engine with Core ML. Audio and transcripts stay on the Mac.
 
-- Menu bar only, no Dock icon
+- Menu bar only. While the Transcripts window is open it also appears in Cmd-Tab, and in the Dock because macOS ties the two together
 - Shortcut: tap `Right ⌥` to start and stop a recording, `Esc` discards it. A tap is a press and release under 0.6 s with no other key in between, so Option+letter typing is unaffected. Click the shortcut beside the status in the menu, then tap another modifier key or press a key combination. The button shows a grey `…` with a blue outline while waiting, previews the keys you press, and marks invalid shortcuts red. A valid shortcut is saved, the outline briefly flashes green, then returns to grey. Esc or clicking away cancels an unfinished change and restores the previous shortcut
 - Transcription runs while you speak: every pause of 0.8 s ends a segment and it is transcribed right away, so when you pause before stopping the text is already there
-- Floating pill while recording: a level meter on a -65 to -25 dBFS scale with 30 ms attack / 160 ms release smoothing; brief peaks are retained between display updates
+- Floating pill while recording: a level meter on a -65 to -25 dBFS scale with 30 ms attack / 160 ms release smoothing; brief peaks are retained between display updates. Errors in the pill are kept short; the details are in `~/Library/Logs/Paraketto.log`
 - Text is pasted only if the app that had focus when you started still has it; otherwise it is kept in history
 - **Transcripts** (right-click the menu-bar icon, or choose Transcripts in its menu): recordings grouped by day, with playback, copy, delete, and word count stats. Entries show up to four lines; hover to reveal actions and expand longer text
 - **Dictionary** (the other tab in the same window): explicit, case-sensitive replacements with multiple source spellings per target. Select transcript text and right-click to add a rule; highlights show replacements. Rule changes update every stored transcript from its original
@@ -77,6 +77,54 @@ Preparation is local to this Mac, model paths and compute configuration. It is n
 cache bundled for other machines; macOS can also invalidate it after an OS update or purge it
 to reclaim space. A first load may need preparation again in those cases.
 
+## Editing the interface in Xcode
+
+Open `Paraketto.xcodeproj` and use the **Paraketto** scheme with **My Mac**. The same scheme
+drives both the canvas and Run.
+
+**Previews.** Open a file from `Sources/ParakettoKit/UI`, choose **Editor → Canvas**, and click
+**Resume** if the preview is paused. Select a named preview in the canvas, edit the view’s
+SwiftUI code, and watch the preview update. The buttons at the bottom left of the canvas decide
+what a click does: in **Live** mode (play icon) it operates the view’s controls, and in
+**Selectable** mode (arrow icon) it selects the element under the cursor and its code.
+
+Selectable mode recompiles the open file with instrumentation that cannot handle a function passed
+by name to a button, so in previewed files write `Button("Save") { save() }` rather than
+`Button("Save", action: save)`. Xcode shows no error when this happens: clicks only outline the
+whole preview, and other previews can stop selecting as well.
+
+| File | Previews |
+|---|---|
+| `MenuContent.swift` | Ready, Needs Accessibility, Downloading, Optimizing, Loading, Recording, Transcribing, Notice, Model failed |
+| `PillView.swift` | Recording (with a live meter), Transcribing, Copied, Kept in history, Error, All messages |
+| `ShortcutRecorder.swift` | All states, Interactive |
+| `TranscriptsView.swift` | Transcripts, Empty transcripts, Importing, Import failed, Importing with errors, Drop audio files, Drop while busy |
+| `DictionaryView.swift` | Dictionary, Empty dictionary |
+| `DictionaryEditor.swift` | Add replacement, Edit replacement |
+
+`PreviewFixtures.swift` supplies disposable sample dictionary entries, transcripts, and silent
+recordings. Each preview has separate temporary files and shortcut preferences; previews do
+not load recognition models, start recording, register shortcuts, read personal history, or
+write to the log. States reach the views through the debug-only `DictationController.showPreview`.
+Preview declarations and fixtures are excluded from release builds.
+
+Xcode reads the package’s file list when it opens the project. After adding or removing a source
+file outside Xcode, close and reopen the project, or the canvas reports `Cannot find … in scope`.
+
+**Run** builds and launches the real `Paraketto.app` from Xcode’s build folder, with the debugger
+attached, its menu-bar icon and VAD model, and your real history, dictionary, and models. Quit
+any other running copy first, because both would answer the shortcut. The project signs with the
+`Paraketto Dev` certificate described under [Accessibility and rebuilds](#accessibility-and-rebuilds),
+so it has the same designated requirement as a `make bundle` build and keeps its Accessibility
+grant; Run needs that certificate. Xcode signs every build, including each canvas rebuild, so
+if a keychain dialog asks to let `codesign` use the key, choose **Always Allow**; **Allow** only
+covers that one build.
+
+The project is only a thin app target: `Sources/ParakettoLauncher/main.swift` links the
+`ParakettoKit` package library, and a final build phase runs `make xcode-bundle` to add the same
+resources as `make bundle`. Use `make run` or `make bundle` to build the release app and install it
+in Applications.
+
 ## Permissions
 
 - **Microphone**: prompted on the first recording.
@@ -115,6 +163,8 @@ The Transcripts and Dictionary tabs share one window. Dictionary entries contain
 (**TO**) and one or more explicit spellings (**FROMS**), with search and an add button.
 Selected transcript text can be added through **Add to dictionary…**; outer whitespace is
 trimmed and selections containing replacements map back to the original recognition text.
+The target field suggests existing targets as you type; choose one to add spellings to it,
+or enter a new target. Typing an exact existing target also adds to that entry.
 Partial selections of a replacement cannot be added. Replacement highlights show the original
 wording on hover, with actions to edit the rule or remove that alias globally.
 
@@ -123,10 +173,11 @@ Targets are never implicit aliases. At each position the longest eligible alias 
 replacement output is never matched again. Conflicting aliases are rejected, not overwritten.
 There is no fuzzy matching, filler removal, or per-occurrence disable switch.
 
-Each entry defaults to strict boundaries: whitespace or the start/end of the transcript.
-**Allow punctuation** additionally permits exactly `,.;()` immediately around an alias, leaving
-those characters untouched. Internal punctuation must still match literally. Emails, URLs,
-and paths are protected in both modes. Protection deliberately favors skipping ambiguous
+An alias must start after whitespace or at the start of the transcript. It must end at whitespace,
+the end of the transcript, or simple punctuation (`. , ; ' " ? ! )` and the closing quotes `’ ”`)
+that itself ends the word, leaving that punctuation untouched. So `gee tub?!` matches, while `don`
+does not match inside `don't`, nor `3` inside `3.5`. Internal punctuation must still match literally.
+Emails, URLs, and paths are protected. Protection deliberately favors skipping ambiguous
 address-like tokens over modifying them; for example, `word.example` is protected even if it
 was intended as prose with a missing space.
 
@@ -265,7 +316,7 @@ utterance is below perception, so it was removed in favour of the framework path
 ### Checking against FluidAudio
 
 `make test` checks dictionary matching and selection, original preservation, file storage, audio decoding, playback, paste delivery, and cache validation
-without downloading recognition models. Tests that need the real models are skipped by default.
+without downloading recognition models. Plain `swift test` also runs the debug-only preview fixture tests. Tests that need the real models are skipped by default.
 After `make prepare-models`, enable them with the LibriSpeech `1995-1826-0002.wav` fixture:
 
 ```bash
@@ -289,36 +340,50 @@ VAD strip, and `PARAKEET_DEBUG=1` logs every joint decision.
 
 ## Layout
 
+`Sources/ParakettoKit/UI`:
+
 | File | Role |
 |---|---|
 | `App.swift` | app entry point, menu-bar and shared library window, startup |
-| `MenuBarViews.swift` | status, loading indicators, and menu actions |
+| `MenuBarLabel.swift` | menu-bar icon for each state |
+| `MenuContent.swift` | status, loading indicators, and menu actions |
 | `MenuControls.swift` | menu action labels and button styling |
 | `MenuBarSecondaryClick.swift` | right-click shortcut to Transcripts |
+| `ShortcutRecorder.swift` | inline menu shortcut recorder, with modifier-tap and key-combination capture |
+| `Overlay.swift` | floating, click-through panel that hosts the pill |
+| `PillView.swift` | recording pill: level meter, notices and errors |
+| `LibraryView.swift` | shared Transcripts/Dictionary window and editor sheet |
+| `TranscriptsView.swift` | grouped transcript list, import status and drop target |
+| `TranscriptRow.swift` | four-line preview, expansion, hover actions and copy feedback |
+| `TranscriptText.swift` | native selectable text, replacement highlights and dictionary context actions |
+| `DictionaryView.swift` | dictionary tab with search |
+| `DictionaryEditor.swift` | rule editor |
+| `ParakeetArtwork.swift` | loads menu-bar assets derived from `Resources/paraketto.png` |
+| `PreviewFixtures.swift` | isolated sample data and wrappers for Xcode’s live canvas (Debug only) |
+
+`Sources/ParakettoKit/Core`:
+
+| File | Role |
+|---|---|
 | `DictationController.swift` | record → transcribe → paste state machine, Esc cancel, meter ticker |
 | `Hotkey.swift` | Carbon global hotkey for key combinations |
 | `ModifierTap.swift` | bare modifier tap detection via global event monitors |
 | `ShortcutSettings.swift` | shortcut model (modifier tap or chord), persisted in UserDefaults |
-| `ShortcutRecorder.swift` | inline menu shortcut recorder, with modifier-tap and key-combination capture |
 | `AudioRecorder.swift` | `AVAudioEngine` mic capture to 16 kHz mono Float32, dBFS level smoothing |
 | `RecordingFile.swift` | incremental WAV storage, bounded reads, History handoff and temporary-file cleanup |
 | `AudioFileReader.swift` | bounded decoding/resampling of imported recordings |
 | `Transcriber.swift` | thin adapter over `ParakeetTDT` |
 | `Paster.swift` | destination check, pasteboard write, synthetic Cmd+V |
-| `Overlay.swift` | floating recording pill |
 | `History.swift` | persisted entries + WAV files under `~/Library/Application Support/Paraketto/history/` |
 | `AudioPlayer.swift` | playback of one stored recording at a time |
-| `TranscriptsView.swift` | grouped transcript list, import status and drop target |
-| `TranscriptRow.swift` | four-line preview, expansion, hover actions and copy feedback |
-| `TranscriptText.swift` | native selectable text, replacement highlights and dictionary context actions |
 | `Dictionary.swift` | exact matcher, protected address ranges, original/output mapping and atomic rule storage |
-| `DictionaryView.swift` | shared Transcripts/Dictionary tabs, search and rule editor |
 | `ModelPreparation.swift` | headless model preparation for builds |
 | `ModelPreparationRecord.swift` | remembers successful preparation to distinguish Optimizing from Loading |
-| `ParakeetArtwork.swift` | loads menu-bar assets derived from `Resources/paraketto.png` |
 | `Log.swift` | `~/Library/Logs/Paraketto.log`, truncated per launch, never contains transcripts |
 
-Application sources live in `Sources/Paraketto`; recognition is isolated in `Sources/ParakeetTDT`,
+The application lives in the `ParakettoKit` library in `Sources/ParakettoKit`, so Xcode can preview
+its views. `Sources/ParakettoLauncher` contains only the entry point, shared by the SwiftPM executable
+and `Paraketto.xcodeproj`. Recognition is isolated in `Sources/ParakeetTDT`,
 and the CLI is in `Sources/ParakettoCLI`. `tests/swift` contains regression tests; `tools/export`
 contains optional model exporters and probes. Generated bundles, caches, local audio fixtures, and
 build/test artifacts are ignored. The source icon lives in `Resources`; `tools/make_icon.swift`

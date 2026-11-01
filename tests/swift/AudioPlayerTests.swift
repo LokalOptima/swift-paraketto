@@ -1,6 +1,6 @@
 import AVFoundation
 import XCTest
-@testable import Paraketto
+@testable import ParakettoKit
 
 final class AudioPlayerTests: XCTestCase {
     @MainActor

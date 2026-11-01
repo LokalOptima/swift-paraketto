@@ -2,7 +2,7 @@ import AVFoundation
 import CoreML
 import XCTest
 @testable import ParakeetTDT
-@testable import Paraketto
+@testable import ParakettoKit
 
 final class ModelTests: XCTestCase {
     func testVADFrameCountsStayAlignedAcrossLongRecordings() throws {

@@ -99,7 +99,8 @@ struct TranscriptText: NSViewRepresentable {
                                                     attributes: [.font: NSFont.systemFont(ofSize: NSFont.systemFontSize),
                                                                  .foregroundColor: NSColor.labelColor])
         for edit in result.replacements {
-            attributed.addAttributes([.backgroundColor: NSColor.systemTeal.withAlphaComponent(0.16),
+            attributed.addAttributes([.underlineStyle: NSUnderlineStyle.single.rawValue,
+                                      .underlineColor: NSColor.systemTeal,
                                       .toolTip: "Replaced “\(edit.alias)”. Right-click to edit the rule."], range: edit.outputRange)
         }
         return attributed

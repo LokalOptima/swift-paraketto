@@ -97,7 +97,7 @@ whole preview, and other previews can stop selecting as well.
 
 | File | Previews |
 |---|---|
-| `MenuContent.swift` | Ready, Needs Accessibility, Downloading, Optimizing, Loading, Recording, Transcribing, Notice, Model failed |
+| `MenuContent.swift` | Ready, Needs Accessibility, Needs Microphone, Shortcut in use, Downloading, Optimizing, Loading, Recording, Transcribing, Notice, Model failed |
 | `PillView.swift` | Recording (with a live meter), Transcribing, Copied, Kept in history, Error, All messages |
 | `ShortcutRecorder.swift` | All states, Interactive |
 | `TranscriptsView.swift` | Transcripts, Empty transcripts, Importing, Import failed, Importing with errors, Drop audio files, Drop while busy |
@@ -129,10 +129,17 @@ in Applications.
 
 ## Permissions
 
-- **Microphone**: prompted on the first recording.
-- **Accessibility**: needed to send the Cmd+V keystroke. Prompted at launch, granted in
-  System Settings → Privacy & Security → Accessibility. Without it the transcript is only
-  copied to the clipboard.
+- **Microphone**: prompted on the first recording. macOS asks only once, so after a denial the pill
+  reports "No mic access" and the menu offers **Grant Microphone…**, which opens System Settings.
+- **Accessibility**: needed to send the Cmd+V keystroke and to see `Esc` in other apps. Prompted at
+  launch, granted in System Settings → Privacy & Security → Accessibility. Without it the transcript
+  is only copied to the clipboard and `Esc` can't cancel a recording, which the menu explains under
+  **Grant Accessibility…**. Both are checked again at each recording.
+
+The shortcut needs neither permission. Key combinations are Carbon hotkeys. A bare modifier tap relies
+on macOS delivering modifier changes to global monitors without Accessibility, which Apple does not
+document (checked on macOS 15.8). Other keys are withheld, so the tap reads the system's input counters
+to tell a tap from Option+letter.
 
 ### Accessibility and rebuilds
 

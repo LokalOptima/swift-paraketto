@@ -62,6 +62,8 @@ final class DictationController: ObservableObject {
     @Published private(set) var modelError: String?
     @Published private(set) var isLoadingModel = true
     @Published private(set) var isStartingRecording = false
+    /// The saved key combination could not be registered, so pressing it does nothing.
+    @Published private(set) var isShortcutInUse = false
     private var isModelReady = false
     private var modelLoadID = UUID()
 
@@ -95,7 +97,7 @@ final class DictationController: ObservableObject {
     private var hotkey: Hotkey?
     private var modifierTap: ModifierTap?
     private var shortcutSubscription: AnyCancellable?
-    private var escapeMonitor: Any?
+    private var escapeMonitors: [Any] = []
     private var overlay: Overlay?
     private var smoother = LevelSmoother()
     private var meterTask: Task<Void, Never>?
@@ -134,12 +136,14 @@ final class DictationController: ObservableObject {
     private func applyShortcuts() {
         hotkey = nil
         modifierTap = nil
+        isShortcutInUse = false
         guard !shortcuts.isRecording else { return }
         switch shortcuts.shortcut {
         case .chord(let chord):
             let hotkey = Hotkey(binding: Hotkey.Binding(chord), onPress: { [weak self] in self?.toggleRecording() })
             self.hotkey = hotkey
-            if hotkey.registrationError != nil, state == .idle {
+            isShortcutInUse = hotkey.registrationError != nil
+            if isShortcutInUse, state == .idle {
                 show(.failed("Shortcut in use"))
             }
         case .tap(let key):
@@ -187,6 +191,8 @@ final class DictationController: ObservableObject {
             isModelReady = true
             state = .idle
             Log.info("Parakeet Ultra ready in \(Int(Date().timeIntervalSince(started) * 1000)) ms")
+            // Shortcuts are armed while the model loads, too early for the pill to report a failure.
+            if isShortcutInUse { show(.failed("Shortcut in use")) }
         } catch {
             modelError = "Could not load model: \(error.localizedDescription)"
             state = .failed(error.localizedDescription)
@@ -392,12 +398,20 @@ final class DictationController: ObservableObject {
         elapsed = 0
         smoother.reset()
         inputLevel = 0
-        // A passive monitor rather than a Carbon hotkey: registering a hotkey while ⌃⌥Space is
+        // Passive monitors rather than a Carbon hotkey: registering a hotkey while ⌃⌥Space is
         // physically held makes Carbon drop that key's release event, which left recordings stuck.
-        escapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        // The global monitor needs Accessibility and misses this app's own windows, hence the local one.
+        let cancelOnEscape: (NSEvent) -> Void = { [weak self] event in
             guard event.keyCode == 53 else { return }
             Task { @MainActor in self?.cancel() }
         }
+        escapeMonitors = [
+            NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: cancelOnEscape),
+            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                cancelOnEscape(event)
+                return event
+            },
+        ].compactMap { $0 }
         meterTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: Self.meterInterval)
@@ -412,8 +426,8 @@ final class DictationController: ObservableObject {
     }
 
     private func finishSession() {
-        if let escapeMonitor { NSEvent.removeMonitor(escapeMonitor) }
-        escapeMonitor = nil
+        for monitor in escapeMonitors { NSEvent.removeMonitor(monitor) }
+        escapeMonitors = []
         meterTask?.cancel()
         meterTask = nil
     }
@@ -435,11 +449,12 @@ final class DictationController: ObservableObject {
 #if DEBUG
 extension DictationController {
     /// Sets what the views observe, for Xcode's canvas. Starts no audio, model load or hotkey.
-    func showPreview(_ state: State, modelError: String? = nil,
+    func showPreview(_ state: State, modelError: String? = nil, isShortcutInUse: Bool = false,
                      fileImport: FileImportStatus? = nil, importErrors: [String] = []) {
         isPreview = true
         self.state = state
         self.modelError = modelError
+        self.isShortcutInUse = isShortcutInUse
         self.fileImport = fileImport
         self.importErrors = importErrors
         switch state {

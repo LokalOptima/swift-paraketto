@@ -33,6 +33,12 @@ Downloads are installed only after all required files arrive, so an interrupted 
 cannot leave a seemingly ready model. Existing compatible FluidAudio caches and optional
 locally optimized Ultra encoder and decoder exports are reused.
 
+The command-line runner uses the same recognizer:
+
+```bash
+.build/release/paraketto-cli --vad .build/VadHead.mlmodelc recording.wav
+```
+
 ## Build and run
 
 Requires macOS 14+, Apple Silicon, and Xcode 16 or later.
@@ -55,6 +61,7 @@ Successful preparation is remembered for the model files and macOS version, incl
 preparation during builds. This is a UI hint, not a query of Core ML's private cache;
 a system cache purge can still make a later **Loading** take longer.
 
+- `make prepare-models` downloads and prepares Ultra explicitly.
 - `make bundle PREPARE_MODELS=0` skips preparation, useful when packaging for another Mac.
 - `make bundle INSTALL_APP=0` keeps the build in the checkout without installing it.
 - `INSTALL_DIR=~/Applications` installs to your personal Applications folder instead.
@@ -217,8 +224,8 @@ that returns token, probability and duration bin directly.
 ### Voice-activity head
 
 Parakeet Ultra's weights carry a small VAD head on the encoder's subsampler, which moondream's
-engine uses to cut long audio at pauses. FluidAudio's export leaves it out, so `export_vad_head.py`
-on the `dev-tools` branch exports subsampler plus head to `Resources/VadHead.mlpackage`
+engine uses to cut long audio at pauses. FluidAudio's export leaves it out, so
+`tools/export/export_vad_head.py` exports subsampler plus head to `Resources/VadHead.mlpackage`
 (8.7 MB), fetching only the 9 MB of needed tensors from the safetensors file. The wiring
 (SiLU after `proj` and `ctx`, no residual) follows parakeet.cpp's published analysis, since
 moondream does not document the head; it gives one speech probability per 80 ms frame.
@@ -259,10 +266,25 @@ drifts until whole segments decode to blanks.
   starts mid-word (FluidAudio's own models do the same), so a window with speech that decodes
   empty is decoded again from a later start.
 
+`tests/make_longform.py` joins the LibriSpeech clips into one to three minute files with 0.3 to 1 s
+gaps, and `tests/score.py` computes word error rate the Open ASR Leaderboard way: Whisper's
+EnglishTextNormalizer on both sides, then `jiwer`. `make compare` and `make longform` feed audio in
+100 ms chunks like the app. The table below records earlier development measurements;
+rerun those commands to measure the current build:
+
+| Version | Long files | Short clips |
+|---|---|---|
+| state carried across cuts, 13 s windows | about 9% (counted before the scorer existed) | 0.20% |
+| pause commits, overlap join, fresh decoder | 0.20% | 0.20% |
+
+Those runs included model errors such as "bade fare" for "bade fair" and "Murcheston". Pause
+decisions use only the audio heard so far, so feeding a whole file at once can cut differently
+(0.40% on the long files).
+
 ### Faster than the stock export
 
-Two optional exports, built locally with `uv` on the `dev-tools` branch (they are too large for the
-repo) and picked up automatically by the app from `~/Library/Application Support/Paraketto/models/`:
+Two optional exports, built locally with `uv` (they are too large for the repo) and picked up
+automatically by the app and CLI from `~/Library/Application Support/Paraketto/models/`:
 
 - `make encoder-export`: the encoder as one multi-function Core ML model with 5 s, 10 s and 15 s
   windows (605 MB, weights shared), traced from Hugging Face `transformers`' `ParakeetForTDT` and
@@ -288,21 +310,54 @@ the greedy loop on the GPU reached 182x with identical transcripts (commit `89c4
 kernels failed silently twice on the way there, and for dictation the 30 ms it saves on a 10 s
 utterance is below perception, so it was removed in favour of the framework path.
 
+### Measuring
+
+- `xcrun xctrace record --template 'Core ML' --launch -- .build/release/paraketto-cli clip.wav`
+  records every Core ML prediction and the Neural Engine's hardware intervals; export tables with
+  `xcrun xctrace export --input <trace> --toc`.
+- `paraketto-cli --plan` prints each model's operation count, how Core ML assigns operations to
+  CPU, GPU and ANE, and which operators force the CPU.
+- `PARAKEET_TIMING=1` prints mel, encoder and decode time per recording, with the number and total
+  time of fused, joint and decoder Core ML calls; `--fused <model>` swaps in another fused step
+  export for A/B timing; `--chunk-ms N` feeds each file to a session in N ms chunks like the app
+  and reports the time spent after the last chunk; `--tokens` prints each
+  token with its frame; `--vad-probe` prints the VAD strip; `PARAKEET_DEBUG=1` logs every joint decision.
+
+### Checking against FluidAudio
+
+`make test` checks dictionary matching and selection, original preservation, file storage, audio decoding, playback, paste delivery, and cache validation
+without downloading recognition models. Plain `swift test` also runs the debug-only preview fixture tests. Tests that need the real models are skipped by default.
+After `make prepare-models`, enable them with the LibriSpeech `1995-1826-0002.wav` fixture:
+
+```bash
+PARAKETTO_TEST_AUDIO=/path/to/1995-1826-0002.wav make test-models
+```
+
+The fixture defaults to `data/librispeech/1995-1826-0002.wav` inside this checkout. Opting into
+model tests requires the models and fixture to exist; missing prerequisites fail the run.
+These tests check repeated model loading, silence and quiet speech, long-recording
+memory and VAD timing, file imports, and cancellation.
+
+`tests/fixtures/librispeech_fluidaudio.tsv` holds FluidAudio's transcripts of 17 LibriSpeech
+clips. `make compare` transcribes `data/librispeech/*.wav` (set `CLIPS=` to another location) and reports
+differences and the real-time factor. An earlier run matched 15 of 17 transcripts. The two
+differences are a British/American spelling choice
+on a clip cut differently, and a trailing period that FluidAudio drops because it discards any
+token whose duration runs past the end of the audio, which standard TDT decoding does not.
+
+`paraketto-cli --tokens` prints each token with its emission frame, `--vad-probe` prints the
+VAD strip, and `PARAKEET_DEBUG=1` logs every joint decision.
+
 ## Layout
 
 The application lives in the `ParakettoKit` library in `Sources/ParakettoKit`, so Xcode can preview
 its views: `UI` holds the views, and `Core` holds dictation control, audio, pasting, history and the
 dictionary. `Sources/ParakettoLauncher` contains only the entry point, shared by the SwiftPM executable
-and `Paraketto.xcodeproj`. Recognition is isolated in `Sources/ParakeetTDT`. Generated bundles and
-caches are ignored. The source icon lives in `Resources`; `tools/make_icon.swift` generates the app
-icon and template menu-bar image together.
+and `Paraketto.xcodeproj`. Recognition is isolated in `Sources/ParakeetTDT`,
+and the CLI is in `Sources/ParakettoCLI`. `tests/swift` contains regression tests; `tools/export`
+contains optional model exporters and probes. Generated bundles, caches, local audio fixtures, and
+build/test artifacts are ignored. The source icon lives in `Resources`; `tools/make_icon.swift`
+generates the app icon and template menu-bar image together.
 
 Transcripts and their recordings are stored under `~/Library/Application Support/Paraketto/history/`.
 `~/Library/Logs/Paraketto.log` is truncated on each launch and never contains transcripts.
-
-## Tests and tools
-
-`master` holds only what builds and runs the app. The regression tests, the `paraketto-cli` runner,
-benchmarks and model exporters live on the `dev-tools` branch, which is `master` plus those files,
-and this document's copy there explains them. `git switch dev-tools && git merge master` brings it up
-to date. Never merge `dev-tools` into `master`.

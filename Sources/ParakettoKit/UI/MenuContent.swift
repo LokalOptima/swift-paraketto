@@ -5,6 +5,7 @@ struct MenuContent: View {
     @ObservedObject private var shortcuts: ShortcutSettings
     private let isAccessibilityTrusted: () -> Bool
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismiss) private var dismiss
 
     init(controller: DictationController, isAccessibilityTrusted: @escaping () -> Bool = { Paster.isAccessibilityTrusted }) {
         self.controller = controller
@@ -56,14 +57,15 @@ struct MenuContent: View {
 
             if !isAccessibilityTrusted() {
                 Divider().padding(.vertical, 4)
-                Button("Grant Accessibility…") { Paster.openAccessibilitySettings() }
+                Button("Grant Accessibility…") {
+                    dismiss()
+                    Paster.openAccessibilitySettings()
+                }
             }
 
             Divider().padding(.vertical, 4)
             Button {
-                controller.windowTab = .transcripts
-                openWindow(id: "history")
-                NSApplication.shared.activate(ignoringOtherApps: true)
+                controller.showTranscripts(using: openWindow)
             } label: {
                 Text("Transcripts")
             }
@@ -79,6 +81,8 @@ struct MenuContent: View {
         .buttonStyle(MenuActionStyle())
         .padding(6)
         .frame(width: 260)
+        .onAppear { controller.closeMenu = { dismiss() } }
+        .onDisappear { controller.closeMenu = nil }
     }
 
     private var statusLabel: String {

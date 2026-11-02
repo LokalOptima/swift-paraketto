@@ -18,11 +18,7 @@ struct MenuBarLabel: View {
         }
         .accessibilityLabel("Paraketto: \(controller.state.label)")
         .onAppear {
-            secondaryClick.start {
-                controller.windowTab = .transcripts
-                openWindow(id: "history")
-                NSApplication.shared.activate(ignoringOtherApps: true)
-            }
+            secondaryClick.start { controller.showTranscripts(using: openWindow) }
         }
         .onDisappear { secondaryClick.stop() }
     }

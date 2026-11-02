@@ -42,6 +42,19 @@ struct ParakettoApp: App {
     }
 }
 
+extension DictationController {
+    /// The order matters. A window-style menu stays open until told otherwise, and closing it after the
+    /// window opens can send the app to the background. Becoming regular has to come before activating,
+    /// or the app stays last in Cmd-Tab because only a regular app's activation moves it up.
+    func showTranscripts(using openWindow: OpenWindowAction) {
+        closeMenu?()
+        windowTab = .transcripts
+        NSApplication.shared.setActivationPolicy(.regular)
+        openWindow(id: "history")
+        NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+}
+
 /// Starts dictation at launch. The menu content only exists while the menu is open,
 /// so the hotkey and model load cannot be tied to it.
 final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {

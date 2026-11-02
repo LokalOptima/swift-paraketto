@@ -79,6 +79,9 @@ final class DictationController: ObservableObject {
     }
 
     enum WindowTab: Hashable { case transcripts, dictionary }
+
+    /// Set while the menu is open, so showing Transcripts can close it from any route.
+    var closeMenu: (() -> Void)?
     @Published var windowTab: WindowTab = .transcripts
     let dictionary: DictionaryStore
     let history: HistoryStore

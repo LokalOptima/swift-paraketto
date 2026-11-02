@@ -94,16 +94,22 @@ struct MenuPreview: View {
     private let state: DictationController.State
     private let modelError: String?
     private let isAccessibilityTrusted: Bool
+    private let isMicrophoneDenied: Bool
+    private let isShortcutInUse: Bool
 
-    init(_ state: DictationController.State, modelError: String? = nil, isAccessibilityTrusted: Bool = true) {
+    init(_ state: DictationController.State, modelError: String? = nil, isAccessibilityTrusted: Bool = true,
+         isMicrophoneDenied: Bool = false, isShortcutInUse: Bool = false) {
         self.state = state
         self.modelError = modelError
         self.isAccessibilityTrusted = isAccessibilityTrusted
+        self.isMicrophoneDenied = isMicrophoneDenied
+        self.isShortcutInUse = isShortcutInUse
     }
 
     var body: some View {
-        MenuContent(controller: fixtures.controller, isAccessibilityTrusted: { isAccessibilityTrusted })
-            .onAppear { fixtures.controller.showPreview(state, modelError: modelError) }
+        MenuContent(controller: fixtures.controller, isAccessibilityTrusted: { isAccessibilityTrusted },
+                    isMicrophoneDenied: { isMicrophoneDenied })
+            .onAppear { fixtures.controller.showPreview(state, modelError: modelError, isShortcutInUse: isShortcutInUse) }
     }
 }
 

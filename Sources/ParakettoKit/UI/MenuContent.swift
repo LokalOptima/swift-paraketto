@@ -4,13 +4,16 @@ struct MenuContent: View {
     @ObservedObject var controller: DictationController
     @ObservedObject private var shortcuts: ShortcutSettings
     private let isAccessibilityTrusted: () -> Bool
+    private let isMicrophoneDenied: () -> Bool
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismiss) private var dismiss
 
-    init(controller: DictationController, isAccessibilityTrusted: @escaping () -> Bool = { Paster.isAccessibilityTrusted }) {
+    init(controller: DictationController, isAccessibilityTrusted: @escaping () -> Bool = { Paster.isAccessibilityTrusted },
+         isMicrophoneDenied: @escaping () -> Bool = { AudioRecorder.isMicrophoneDenied }) {
         self.controller = controller
         shortcuts = controller.shortcuts
         self.isAccessibilityTrusted = isAccessibilityTrusted
+        self.isMicrophoneDenied = isMicrophoneDenied
     }
 
     var body: some View {
@@ -23,7 +26,7 @@ struct MenuContent: View {
                 }
                 Text(statusLabel)
                     .fontWeight(.medium)
-                    .foregroundStyle(controller.state == .idle ? Color(nsColor: .systemGreen) : .primary)
+                    .foregroundStyle(controller.state == .idle && dictationBlocker == nil ? Color(nsColor: .systemGreen) : .primary)
                     .lineLimit(1)
                     .layoutPriority(1)
                 Spacer(minLength: 8)
@@ -55,12 +58,34 @@ struct MenuContent: View {
                     .disabled(controller.isLoadingModel)
             }
 
+            if controller.isShortcutInUse {
+                Text("Another app uses this shortcut. Click it to choose a different one.")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(8)
+            }
+
+            if isMicrophoneDenied() {
+                Divider().padding(.vertical, 4)
+                Button("Grant Microphone…") {
+                    dismiss()
+                    AudioRecorder.openMicrophoneSettings()
+                }
+            }
+
             if !isAccessibilityTrusted() {
                 Divider().padding(.vertical, 4)
                 Button("Grant Accessibility…") {
                     dismiss()
                     Paster.openAccessibilitySettings()
                 }
+                Text("Without it, text is copied but not pasted, and Esc can't cancel a recording.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 4)
             }
 
             Divider().padding(.vertical, 4)
@@ -85,11 +110,18 @@ struct MenuContent: View {
         .onDisappear { controller.closeMenu = nil }
     }
 
+    /// Why the shortcut can't dictate, although the app itself is ready.
+    private var dictationBlocker: String? {
+        if isMicrophoneDenied() { return "No mic access" }
+        return controller.isShortcutInUse ? "Shortcut in use" : nil
+    }
+
     private var statusLabel: String {
         switch controller.state {
         case .downloadingModel: return "Downloading…"
         case .loadingModel: return "Loading…"
         case .optimizingModel: return "Optimizing…"
+        case .idle: return dictationBlocker ?? controller.state.label
         default: return controller.state.label
         }
     }
@@ -98,6 +130,8 @@ struct MenuContent: View {
 #if DEBUG
 #Preview("Ready") { MenuPreview(.idle) }
 #Preview("Needs Accessibility") { MenuPreview(.idle, isAccessibilityTrusted: false) }
+#Preview("Needs Microphone") { MenuPreview(.idle, isMicrophoneDenied: true) }
+#Preview("Shortcut in use") { MenuPreview(.idle, isShortcutInUse: true) }
 #Preview("Downloading") { MenuPreview(.downloadingModel(0.42)) }
 #Preview("Optimizing") { MenuPreview(.optimizingModel) }
 #Preview("Loading") { MenuPreview(.loadingModel) }

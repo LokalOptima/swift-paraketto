@@ -78,12 +78,14 @@ struct LibraryPreview: View {
 struct DictionaryEditorPreview: View {
     @StateObject private var fixtures = PreviewFixtures()
     var editing = false
+    var target = ""
+    var aliases: [String] = []
 
     var body: some View {
         DictionaryEditor(store: fixtures.controller.dictionary,
                          draft: DictionaryDraft(rule: editing
                             ? fixtures.controller.dictionary.rules[0]
-                            : DictionaryRule(target: "", aliases: ["blah"])))
+                            : DictionaryRule(target: target, aliases: aliases)))
     }
 }
 

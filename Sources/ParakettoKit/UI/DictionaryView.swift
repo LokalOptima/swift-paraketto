@@ -2,8 +2,8 @@ import SwiftUI
 
 struct DictionaryView: View {
     @ObservedObject var store: DictionaryStore
-    let edit: (DictionaryDraft) -> Void
     @State private var query = ""
+    @State private var newDraft: DictionaryDraft?
     @State private var deletion: DictionaryRule?
     @State private var error: String?
 
@@ -16,28 +16,24 @@ struct DictionaryView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("Search dictionary", text: $query).textFieldStyle(.plain)
-                    if !query.isEmpty {
-                        Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
-                            .buttonStyle(.borderless).accessibilityLabel("Clear search")
+                OutlinedField {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                        TextField("Search dictionary", text: $query).textFieldStyle(.plain)
+                        if !query.isEmpty {
+                            Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
+                                .buttonStyle(.borderless).accessibilityLabel("Clear search")
+                        }
                     }
+                    .frame(height: 20)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .frame(maxWidth: .infinity)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
-                        .allowsHitTesting(false)
-                }
-                Button { edit(DictionaryDraft(rule: DictionaryRule(target: "", aliases: [""]))) } label: {
+                Button { newDraft = DictionaryDraft(rule: DictionaryRule(target: "", aliases: [])) } label: {
                     Image(systemName: "plus").frame(width: 16, height: 16)
                 }
                 .buttonStyle(.bordered)
-                .help("Add dictionary entry").accessibilityLabel("Add dictionary entry")
+                .help("Add replacement").accessibilityLabel("Add replacement")
                 .disabled(store.loadError != nil)
+                .popover(item: $newDraft, arrowEdge: .bottom) { DictionaryEditor(store: store, draft: $0) }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -49,47 +45,36 @@ struct DictionaryView: View {
                     VStack(spacing: 6) {
                         Text(query.isEmpty ? "No replacements yet" : "No matches")
                         if query.isEmpty {
-                            Text("Add a target spelling and the spellings to replace.")
+                            Text("Add what to replace and what to write instead.")
                                 .font(.caption)
                         }
                     }
                     .foregroundStyle(.secondary)
                 } else {
-                    List(filtered) { rule in
-                        HStack(alignment: .top, spacing: 12) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(rule.target).fontWeight(.semibold)
-                                Text(rule.aliases.joined(separator: "  ·  ")).foregroundStyle(.secondary)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            HStack(spacing: 12) {
-                                Button { edit(DictionaryDraft(rule: rule)) } label: { Image(systemName: "square.and.pencil") }
-                                    .help("Edit rule").accessibilityLabel("Edit \(rule.target)")
-                                Button { deletion = rule } label: { Image(systemName: "trash") }
-                                    .help("Delete rule").accessibilityLabel("Delete \(rule.target)")
-                            }
+                    ScrollViewReader { proxy in
+                        List(filtered) { rule in
+                            DictionaryRow(rule: rule, store: store) { deletion = rule }
+                                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                         }
-                        .buttonStyle(.borderless)
-                        .padding(.vertical, 6)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-                        .contextMenu {
-                            Button("Edit rule…") { edit(DictionaryDraft(rule: rule)) }
-                            Button("Delete rule…", role: .destructive) { deletion = rule }
+                        .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
+                        // Each search gets a new list. Rows inserted above the visible ones would
+                        // otherwise leave it scrolled, hiding the top of the results.
+                        .id(query)
+                        // A new rule can land anywhere in the sorted list, so bring it into view.
+                        .onChange(of: store.rules) { old, new in
+                            guard let added = new.first(where: { rule in !old.contains { $0.id == rule.id } }) else { return }
+                            proxy.scrollTo(added.id)
                         }
                     }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
-                    // Each search gets a new list. Rows inserted above the visible ones would
-                    // otherwise leave it scrolled, hiding the top of the results.
-                    .id(query)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color(nsColor: .textBackgroundColor))
-        .confirmationDialog("Delete this rule?", isPresented: Binding(get: { deletion != nil }, set: { if !$0 { deletion = nil } }), titleVisibility: .visible) {
-            Button("Delete rule", role: .destructive) {
+        .confirmationDialog("Delete this replacement?", isPresented: Binding(get: { deletion != nil }, set: { if !$0 { deletion = nil } }), titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
                 guard let deletion else { return }
                 do { try store.remove(id: deletion.id) }
                 catch { self.error = error.localizedDescription }
@@ -99,6 +84,36 @@ struct DictionaryView: View {
         .alert("Could not update dictionary", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("OK") { error = nil }
         } message: { Text(error ?? "") }
+    }
+}
+
+private struct DictionaryRow: View {
+    let rule: DictionaryRule
+    @ObservedObject var store: DictionaryStore
+    let delete: () -> Void
+    @State private var draft: DictionaryDraft?
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(rule.target).fontWeight(.semibold)
+                Text(rule.aliases.joined(separator: "  ·  ")).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 12) {
+                Button { draft = DictionaryDraft(rule: rule) } label: { Image(systemName: "square.and.pencil") }
+                    .help("Edit replacement").accessibilityLabel("Edit \(rule.target)")
+                    .popover(item: $draft, arrowEdge: .bottom) { DictionaryEditor(store: store, draft: $0) }
+                Button { delete() } label: { Image(systemName: "trash") }
+                    .help("Delete replacement").accessibilityLabel("Delete \(rule.target)")
+            }
+        }
+        .buttonStyle(.borderless)
+        .padding(.vertical, 6)
+        .contextMenu {
+            Button("Edit replacement…") { draft = DictionaryDraft(rule: rule) }
+            Button("Delete replacement…", role: .destructive) { delete() }
+        }
     }
 }
 

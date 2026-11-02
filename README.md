@@ -11,7 +11,7 @@ Neural Engine with Core ML. Audio and transcripts stay on the Mac.
 - Floating pill while recording: a level meter on a -65 to -25 dBFS scale with 30 ms attack / 160 ms release smoothing; brief peaks are retained between display updates. Errors in the pill are kept short; the details are in `~/Library/Logs/Paraketto.log`
 - Text is pasted only if the app that had focus when you started still has it; otherwise it is kept in history
 - **Transcripts** (right-click the menu-bar icon, or choose Transcripts in its menu): recordings grouped by day, with playback, copy, delete, and word count stats. Entries show up to four lines; hover to reveal actions and expand longer text
-- **Dictionary** (the other tab in the same window): explicit, case-sensitive replacements with multiple source spellings per target. Select transcript text and right-click to add a rule; highlights show replacements. Rule changes update every stored transcript from its original
+- **Dictionary** (the other tab in the same window): explicit, case-sensitive replacements with multiple spellings per target. Select transcript text and right-click to add one; underlines show replacements. Changes update every stored transcript from its original
 - Drop an audio file onto Transcripts to transcribe it locally, including WAV, M4A and AAC files supported by macOS
 - Supports 25 European languages with automatic detection, punctuation, and capitalization
 - The model downloads on first use (about 613 MB); existing compatible FluidAudio caches are reused
@@ -100,7 +100,7 @@ whole preview, and other previews can stop selecting as well.
 | `ShortcutRecorder.swift` | All states, Interactive |
 | `TranscriptsView.swift` | Transcripts, Empty transcripts, Importing, Import failed, Importing with errors, Drop audio files, Drop while busy |
 | `DictionaryView.swift` | Dictionary, Empty dictionary |
-| `DictionaryEditor.swift` | Add replacement, Edit replacement |
+| `DictionaryEditor.swift` | Add replacement, Edit replacement, From a transcript, Adding to an existing target, Many spellings, Spelling already used |
 
 `PreviewFixtures.swift` supplies disposable sample dictionary entries, transcripts, and silent
 recordings. Each preview has separate temporary files and shortcut preferences; previews do
@@ -159,14 +159,22 @@ is not trusted and text is only copied. Two ways out:
 
 ## Dictionary decisions
 
-The Transcripts and Dictionary tabs share one window. Dictionary entries contain a target
-(**TO**) and one or more explicit spellings (**FROMS**), with search and an add button.
+The Transcripts and Dictionary tabs share one window. Each replacement has one or more explicit
+spellings to replace and the target text to write with them, with search and an add button.
 Selected transcript text can be added through **Add to dictionary…**; outer whitespace is
 trimmed and selections containing replacements map back to the original recognition text.
-The target field suggests existing targets as you type; choose one to add spellings to it,
-or enter a new target. Typing an exact existing target also adds to that entry.
-Partial selections of a replacement cannot be added. Replacement highlights show the original
-wording on hover, with actions to edit the rule or remove that alias globally.
+Partial selections of a replacement cannot be added. Replacement underlines show the original
+wording on hover, with actions to edit the replacement or remove that spelling globally.
+
+The editor is a popover attached to the selected words, the add button or the row's pencil, so the
+sentence or list stays in view. **Replace** holds spellings as chips: a comma or Return finishes
+one, Delete in an empty field reopens the last, and clicking a chip reopens it. **With** suggests
+existing targets that have a word starting with the text; Tab takes the first, and the arrow keys
+and Return choose another. Typing an exact existing target adds to that replacement, whether adding
+or editing. One fixed status line shows suggestions, conflicts and what a save will join, so nothing
+moves while typing. Add and Save stay disabled until the entry is complete and free of conflicts.
+Return finishes one thing at a time and saves once nothing is left. Clicking away saves a complete
+entry and drops an incomplete one; only Cancel and Esc discard changes.
 
 Matching is literal and case-sensitive, without Unicode, case, or whitespace normalization.
 Targets are never implicit aliases. At each position the longest eligible alias wins;
@@ -357,7 +365,7 @@ VAD strip, and `PARAKEET_DEBUG=1` logs every joint decision.
 | `TranscriptRow.swift` | four-line preview, expansion, hover actions and copy feedback |
 | `TranscriptText.swift` | native selectable text, replacement highlights and dictionary context actions |
 | `DictionaryView.swift` | dictionary tab with search |
-| `DictionaryEditor.swift` | rule editor |
+| `DictionaryEditor.swift` | replacement editor, shown in a popover |
 | `ParakeetArtwork.swift` | loads menu-bar assets derived from `Resources/paraketto.png` |
 | `PreviewFixtures.swift` | isolated sample data and wrappers for Xcode’s live canvas (Debug only) |
 

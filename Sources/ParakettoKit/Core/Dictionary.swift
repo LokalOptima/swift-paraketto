@@ -198,6 +198,21 @@ final class DictionaryStore: ObservableObject {
         try commit(next)
     }
 
+    /// Saves a rule, joining it to any other rule with the same target so each target keeps one rule.
+    func saveMerging(_ rule: DictionaryRule) throws {
+        var next = rules
+        if let index = next.firstIndex(where: { $0.id != rule.id && Array($0.target.utf16) == Array(rule.target.utf16) }) {
+            let known = next[index].aliases.map { Array($0.utf16) }
+            next[index].aliases += rule.aliases.filter { !known.contains(Array($0.utf16)) }
+            next.removeAll { $0.id == rule.id }
+        } else if let index = next.firstIndex(where: { $0.id == rule.id }) {
+            next[index] = rule
+        } else {
+            next.append(rule)
+        }
+        if next != rules { try commit(next) }
+    }
+
     func remove(id: UUID) throws { try commit(rules.filter { $0.id != id }) }
 
     func removeAlias(_ alias: String, from id: UUID) throws {
@@ -222,22 +237,131 @@ final class DictionaryStore: ObservableObject {
         var ids = Set<UUID>()
         var targets = Set<[UInt16]>()
         for rule in rules {
-            guard ids.insert(rule.id).inserted else { throw DictionaryError("Duplicate dictionary entry.") }
+            guard ids.insert(rule.id).inserted else { throw DictionaryError("Duplicate replacement.") }
             guard !rule.target.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw DictionaryError("Enter a target spelling.")
+                throw DictionaryError("Enter the text to write instead.")
             }
             guard targets.insert(Array(rule.target.utf16)).inserted else {
-                throw DictionaryError("This target already exists. Add spellings to its existing entry.")
+                throw DictionaryError("Two replacements write “\(rule.target)”.")
             }
-            guard !rule.aliases.isEmpty else { throw DictionaryError("Add at least one source spelling.") }
+            guard !rule.aliases.isEmpty else { throw DictionaryError("Add at least one spelling to replace.") }
             for alias in rule.aliases {
                 guard !alias.isEmpty, alias == alias.trimmingCharacters(in: .whitespacesAndNewlines) else {
-                    throw DictionaryError("Source spellings must not be empty or start/end with whitespace.")
+                    throw DictionaryError("Spellings can’t be empty or start or end with a space.")
                 }
                 guard aliases.insert(Array(alias.utf16)).inserted else {
-                    throw DictionaryError("“\(alias)” already belongs to a rule. Edit that rule instead.")
+                    throw DictionaryError("“\(alias)” already belongs to another replacement.")
                 }
             }
+        }
+    }
+}
+
+/// A replacement while it is being typed. Separate from the view so its rules can be tested.
+struct ReplacementForm: Equatable {
+    let ruleID: UUID
+    private(set) var aliases: [String]
+    var pendingAlias = ""
+    var target: String
+    private let originalTarget: String
+    private var keptCommas = 0
+
+    init(rule: DictionaryRule) {
+        ruleID = rule.id
+        aliases = rule.aliases
+        target = rule.target
+        originalTarget = rule.target
+    }
+
+    /// What saving would store, counting the spelling still being typed.
+    var rule: DictionaryRule {
+        var form = self
+        form.commitPendingAlias()
+        return DictionaryRule(id: ruleID, target: target.trimmingCharacters(in: .whitespacesAndNewlines), aliases: form.aliases)
+    }
+
+    /// A typed comma finishes a spelling. Commas already in a reopened spelling stay in it.
+    mutating func finishTypedAliases() {
+        let commas = Self.commas(in: pendingAlias)
+        var rest = pendingAlias
+        if commas > keptCommas {
+            var parts = pendingAlias.components(separatedBy: ",")
+            rest = parts.removeLast()
+            parts.forEach { add($0) }
+            keptCommas = 0
+        } else {
+            keptCommas = commas
+        }
+        let trimmed = String(rest.drop(while: \.isWhitespace))
+        if trimmed != pendingAlias { pendingAlias = trimmed }
+    }
+
+    mutating func commitPendingAlias() {
+        add(pendingAlias)
+        pendingAlias = ""
+        keptCommas = 0
+    }
+
+    mutating func removeAlias(at index: Int) {
+        aliases.remove(at: index)
+    }
+
+    /// Turns a finished spelling back into text, first finishing whatever was being typed.
+    mutating func reopenAlias(at index: Int) {
+        let alias = aliases.remove(at: index)
+        commitPendingAlias()
+        pendingAlias = alias
+        keptCommas = Self.commas(in: alias)
+    }
+
+    private static func commas(in text: String) -> Int { text.filter { $0 == "," }.count }
+
+    private mutating func add(_ alias: String) {
+        let trimmed = alias.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !aliases.contains(where: { Array($0.utf16) == Array(trimmed.utf16) }) else { return }
+        aliases.append(trimmed)
+    }
+
+    /// The other rule this one would join by having the same target.
+    func existingTarget(in rules: [DictionaryRule]) -> DictionaryRule? {
+        let target = Array(rule.target.utf16)
+        return rules.first { $0.id != ruleID && Array($0.target.utf16) == target }
+    }
+
+    /// A spelling that a rule other than this one, or the one it would join, already replaces.
+    func conflict(in rules: [DictionaryRule]) -> (alias: String, owner: DictionaryRule)? {
+        let joined = existingTarget(in: rules)?.id
+        for alias in rule.aliases {
+            let units = Array(alias.utf16)
+            if let owner = rules.first(where: { other in
+                other.id != ruleID && other.id != joined && other.aliases.contains { Array($0.utf16) == units }
+            }) {
+                return (alias, owner)
+            }
+        }
+        return nil
+    }
+
+    func isComplete(in rules: [DictionaryRule]) -> Bool {
+        let rule = rule
+        return !rule.target.isEmpty && !rule.aliases.isEmpty && conflict(in: rules) == nil
+    }
+
+    /// Targets with a word starting with what is typed, for joining an existing rule.
+    func suggestions(in rules: [DictionaryRule], limit: Int = 4) -> [DictionaryRule] {
+        let query = rule.target
+        guard !query.isEmpty, query != originalTarget, existingTarget(in: rules) == nil else { return [] }
+        return Array(rules.filter { $0.id != ruleID && Self.anyWord(of: $0.target, startsWith: query) }
+            .sorted { $0.target.localizedStandardCompare($1.target) == .orderedAscending }
+            .prefix(limit))
+    }
+
+    private static func anyWord(of text: String, startsWith query: String) -> Bool {
+        var rest = Substring(text)
+        while true {
+            if rest.range(of: query, options: [.anchored, .caseInsensitive, .diacriticInsensitive]) != nil { return true }
+            guard let space = rest.firstIndex(where: \.isWhitespace) else { return false }
+            rest = rest[space...].drop(while: \.isWhitespace)
         }
     }
 }

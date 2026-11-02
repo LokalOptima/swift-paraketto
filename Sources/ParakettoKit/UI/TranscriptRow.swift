@@ -5,7 +5,10 @@ struct TranscriptRow: View {
     let entry: HistoryEntry
     @ObservedObject var store: HistoryStore
     @ObservedObject var player: AudioPlayer
-    let dictionaryAction: (TranscriptDictionaryAction) -> Void
+    let dictionary: DictionaryStore
+    let removeAlias: (String, UUID) -> Void
+    @State private var draft: DictionaryDraft?
+    @State private var draftAnchor = CGRect.zero
     @State private var expanded = false
     @State private var isTruncated = false
     @State private var isHovered = false
@@ -24,7 +27,10 @@ struct TranscriptRow: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top) {
                 TranscriptText(result: entry.processed, expanded: expanded,
-                               isTruncated: $isTruncated, dictionaryAction: dictionaryAction)
+                               isTruncated: $isTruncated, dictionaryAction: handle)
+                    .popover(item: $draft, attachmentAnchor: .rect(.rect(draftAnchor)), arrowEdge: .bottom) {
+                        DictionaryEditor(store: dictionary, draft: $0)
+                    }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Button(action: toggleExpansion) {
                     Image(systemName: expanded ? "chevron.up" : "chevron.down")
@@ -122,6 +128,18 @@ struct TranscriptRow: View {
         if NSPasteboard.general.setString(entry.displayText, forType: .string) {
             copied = true
             copySequence += 1
+        }
+    }
+
+    private func handle(_ action: TranscriptDictionaryAction, anchor: CGRect) {
+        draftAnchor = anchor
+        switch action {
+        case .add(let source):
+            draft = DictionaryDraft(rule: DictionaryRule(target: "", aliases: [source]))
+        case .edit(let id):
+            draft = dictionary.rules.first { $0.id == id }.map { DictionaryDraft(rule: $0) }
+        case .remove(let id, let alias):
+            removeAlias(alias, id)
         }
     }
 

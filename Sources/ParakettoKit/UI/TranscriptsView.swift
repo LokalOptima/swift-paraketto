@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Past dictations grouped by day, with playback, copy and delete per entry.
 struct TranscriptsView: View {
-    let dictionaryAction: (TranscriptDictionaryAction) -> Void
+    let removeAlias: (String, UUID) -> Void
     @ObservedObject var controller: DictationController
     @ObservedObject var store: HistoryStore
     @ObservedObject var shortcuts: ShortcutSettings
@@ -12,8 +12,8 @@ struct TranscriptsView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
 
-    init(controller: DictationController, dictionaryAction: @escaping (TranscriptDictionaryAction) -> Void) {
-        self.dictionaryAction = dictionaryAction
+    init(controller: DictationController, removeAlias: @escaping (String, UUID) -> Void) {
+        self.removeAlias = removeAlias
         self.controller = controller
         store = controller.history
         shortcuts = controller.shortcuts
@@ -67,7 +67,7 @@ struct TranscriptsView: View {
                         ForEach(sections, id: \.day) { section in
                             Section {
                                 ForEach(section.entries) { entry in
-                                    TranscriptRow(entry: entry, store: store, player: player, dictionaryAction: dictionaryAction)
+                                    TranscriptRow(entry: entry, store: store, player: player, dictionary: controller.dictionary, removeAlias: removeAlias)
                                         .padding(.horizontal, 16)
                                     if entry.id != section.entries.last?.id {
                                         separator.padding(.horizontal, 16)

@@ -12,7 +12,7 @@ struct TranscriptText: NSViewRepresentable {
     let result: ReplacementResult
     let expanded: Bool
     @Binding var isTruncated: Bool
-    let dictionaryAction: (TranscriptDictionaryAction) -> Void
+    let dictionaryAction: (TranscriptDictionaryAction, CGRect) -> Void
 
     func makeNSView(context: Context) -> DictionaryTextView {
         let view = DictionaryTextView(frame: .zero)
@@ -101,7 +101,7 @@ struct TranscriptText: NSViewRepresentable {
         for edit in result.replacements {
             attributed.addAttributes([.underlineStyle: NSUnderlineStyle.single.rawValue,
                                       .underlineColor: NSColor.systemTeal,
-                                      .toolTip: "Replaced “\(edit.alias)”. Right-click to edit the rule."], range: edit.outputRange)
+                                      .toolTip: "Replaced “\(edit.alias)”. Right-click to edit it."], range: edit.outputRange)
         }
         return attributed
     }
@@ -122,7 +122,7 @@ struct TranscriptText: NSViewRepresentable {
 
 final class DictionaryTextView: NSTextView {
     var result = ReplacementResult(original: "", text: "", replacements: [])
-    var dictionaryAction: ((TranscriptDictionaryAction) -> Void)?
+    var dictionaryAction: ((TranscriptDictionaryAction, CGRect) -> Void)?
     var measurementVersion = 0
     var selectableSourceLength = Int.max
 
@@ -163,8 +163,8 @@ final class DictionaryTextView: NSTextView {
         if let index = clickedIndex,
            let replacement = result.replacements.first(where: { NSLocationInRange(index, $0.outputRange) }) {
             menu.addItem(.separator())
-            menu.addItem(item("Edit rule…", action: .edit(replacement.ruleID)))
-            menu.addItem(item("Remove this alias", action: .remove(replacement.ruleID, replacement.alias)))
+            menu.addItem(item("Edit replacement…", action: .edit(replacement.ruleID)))
+            menu.addItem(item("Remove this spelling", action: .remove(replacement.ruleID, replacement.alias)))
         }
         return menu
     }
@@ -178,6 +178,14 @@ final class DictionaryTextView: NSTextView {
 
     @objc private func performDictionaryAction(_ sender: NSMenuItem) {
         guard let action = sender.representedObject as? TranscriptDictionaryAction else { return }
-        dictionaryAction?(action)
+        dictionaryAction?(action, selectionFrame)
+    }
+
+    /// Where the selected text sits in this view, for attaching the dictionary editor to it.
+    private var selectionFrame: CGRect {
+        guard let layoutManager, let textContainer else { return bounds }
+        let glyphs = layoutManager.glyphRange(forCharacterRange: selectedRange(), actualCharacterRange: nil)
+        return layoutManager.boundingRect(forGlyphRange: glyphs, in: textContainer)
+            .offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
     }
 }

@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import XCTest
 @testable import ParakettoKit
 
@@ -155,6 +156,137 @@ final class DictionaryTests: XCTestCase {
         XCTAssertEqual(store.rules, before)
     }
 
+    // A popover re-measures its content with its current height, so a field offered less must not shrink.
+    @MainActor
+    func testOutlinedFieldKeepsItsContentHeightWhenOfferedLess() {
+        let field = OutlinedField { Color.clear.frame(height: 44) }
+        let size = NSHostingController(rootView: field).sizeThatFits(in: CGSize(width: 300, height: 10))
+        XCTAssertEqual(size.height, 52)
+    }
+
+    func testFormFinishesSpellingsAtCommasAndKeepsTypingAfterThem() {
+        var form = ReplacementForm(rule: DictionaryRule(target: "", aliases: []))
+        func type(_ text: String) {
+            form.pendingAlias = text
+            form.finishTypedAliases()
+        }
+        type("gee tub")
+        XCTAssertEqual(form.aliases, [])
+        XCTAssertEqual(form.rule.aliases, ["gee tub"])
+        type("gee tub,")
+        XCTAssertEqual(form.aliases, ["gee tub"])
+        XCTAssertEqual(form.pendingAlias, "")
+        type(" ")
+        XCTAssertEqual(form.pendingAlias, "")
+        type("a, b , ,a,  gee tub,  c d ")
+        XCTAssertEqual(form.aliases, ["gee tub", "a", "b"])
+        XCTAssertEqual(form.pendingAlias, "c d ")
+        XCTAssertEqual(form.rule.aliases, ["gee tub", "a", "b", "c d"])
+        form.commitPendingAlias()
+        form.removeAlias(at: 0)
+        XCTAssertEqual(form.aliases, ["a", "b", "c d"])
+        type("   ")
+        form.commitPendingAlias()
+        XCTAssertEqual(form.aliases, ["a", "b", "c d"])
+    }
+
+    func testFormReopensSpellingsWithoutSplittingTheirCommas() {
+        var form = ReplacementForm(rule: DictionaryRule(target: " GitHub ", aliases: ["one", "yes, sir"]))
+        func type(_ text: String) {
+            form.pendingAlias = text
+            form.finishTypedAliases()
+        }
+        XCTAssertEqual(form.rule.target, "GitHub")
+        type("typing")
+        form.reopenAlias(at: 0)
+        XCTAssertEqual(form.aliases, ["yes, sir", "typing"])
+        XCTAssertEqual(form.pendingAlias, "one")
+        form.commitPendingAlias()
+        form.reopenAlias(at: 0)
+        form.finishTypedAliases()
+        XCTAssertEqual(form.pendingAlias, "yes, sir")
+        XCTAssertEqual(form.rule.aliases, ["typing", "one", "yes, sir"])
+        type("yes, si")
+        XCTAssertEqual(form.pendingAlias, "yes, si")
+        type("yes, si,")
+        XCTAssertEqual(form.aliases, ["typing", "one", "yes", "si"])
+    }
+
+    func testFormFindsSpellingsOfOtherRulesButNotOfTheRuleItJoins() {
+        let github = DictionaryRule(target: "GitHub", aliases: ["gee tub"])
+        let other = DictionaryRule(target: "Other", aliases: ["thing"])
+        var form = ReplacementForm(rule: DictionaryRule(target: "New", aliases: ["gee tub"]))
+        XCTAssertEqual(form.conflict(in: [github, other])?.alias, "gee tub")
+        XCTAssertEqual(form.conflict(in: [github, other])?.owner, github)
+        XCTAssertFalse(form.isComplete(in: [github, other]))
+        form.target = "GitHub"
+        XCTAssertNil(form.conflict(in: [github, other]))
+        XCTAssertEqual(form.existingTarget(in: [github, other]), github)
+        XCTAssertTrue(form.isComplete(in: [github, other]))
+        form.pendingAlias = "thing"
+        XCTAssertEqual(form.conflict(in: [github, other])?.owner, other)
+        XCTAssertNil(ReplacementForm(rule: github).conflict(in: [github, other]))
+        XCTAssertNil(ReplacementForm(rule: github).existingTarget(in: [github, other]))
+        XCTAssertFalse(ReplacementForm(rule: DictionaryRule(target: "New", aliases: [])).isComplete(in: []))
+        XCTAssertFalse(ReplacementForm(rule: DictionaryRule(target: " ", aliases: ["a"])).isComplete(in: []))
+    }
+
+    func testFormSuggestsTargetsThatHaveAWordStartingWithTheText() {
+        let rules = ["GitHub", "GitLab", "Gitea", "pop. size", "Swift UI", "Xcode", "Écran"].map { DictionaryRule(target: $0, aliases: ["\($0) alias"]) }
+        func suggestions(_ typed: String, limit: Int = 4) -> [String] {
+            var form = ReplacementForm(rule: DictionaryRule(target: "", aliases: []))
+            form.target = typed
+            return form.suggestions(in: rules, limit: limit).map(\.target)
+        }
+        XCTAssertEqual(suggestions("git"), ["Gitea", "GitHub", "GitLab"])
+        XCTAssertEqual(suggestions("git", limit: 2), ["Gitea", "GitHub"])
+        XCTAssertEqual(suggestions("e"), ["Écran"])
+        XCTAssertEqual(suggestions("si"), ["pop. size"])
+        XCTAssertEqual(suggestions("pop. s"), ["pop. size"])
+        XCTAssertEqual(suggestions("  ui "), ["Swift UI"])
+        XCTAssertEqual(suggestions(""), [])
+        XCTAssertEqual(suggestions("GitHub"), [])
+        XCTAssertEqual(suggestions("github"), ["GitHub"])
+        // Reopening a rule doesn't suggest anything until its target changes.
+        var form = ReplacementForm(rule: DictionaryRule(target: "Git", aliases: ["g"]))
+        XCTAssertEqual(form.suggestions(in: rules), [])
+        form.target = "Gi"
+        XCTAssertEqual(form.suggestions(in: rules).count, 3)
+    }
+
+    @MainActor
+    func testSavingWithAnExistingTargetJoinsTheRules() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = DictionaryStore(url: url)
+        let github = DictionaryRule(target: "GitHub", aliases: ["gee tub"])
+        try store.save(github)
+        try store.saveMerging(DictionaryRule(target: "GitHub", aliases: ["git hub", "gee tub"]))
+        XCTAssertEqual(store.rules, [DictionaryRule(id: github.id, target: "GitHub", aliases: ["gee tub", "git hub"])])
+        // Editing a rule onto another target keeps one rule, whichever way it was reached.
+        let other = DictionaryRule(target: "Other", aliases: ["thing"])
+        try store.saveMerging(other)
+        var renamed = other
+        renamed.target = "GitHub"
+        try store.saveMerging(renamed)
+        XCTAssertEqual(store.rules, [DictionaryRule(id: github.id, target: "GitHub", aliases: ["gee tub", "git hub", "thing"])])
+        // A plain edit keeps its place, and an unchanged rule isn't written again.
+        let second = DictionaryRule(target: "Second", aliases: ["two"])
+        try store.saveMerging(second)
+        var edited = store.rules[0]
+        edited.target = "GitLab"
+        try store.saveMerging(edited)
+        XCTAssertEqual(store.rules.map(\.target), ["GitLab", "Second"])
+        let written = try Data(contentsOf: url)
+        try FileManager.default.removeItem(at: url)
+        try store.saveMerging(edited)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+        try written.write(to: url)
+        // A spelling another rule owns still can't be taken.
+        XCTAssertThrowsError(try store.saveMerging(DictionaryRule(target: "Third", aliases: ["two"])))
+        XCTAssertEqual(store.rules.count, 2)
+    }
+
     @MainActor
     func testAllHistoryReprocessesFromOriginalWithoutChangingStoredTextOrAudio() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -197,7 +329,7 @@ final class DictionaryTests: XCTestCase {
         view.textStorage?.setAttributedString(TranscriptText.attributed(result))
         view.setSelectedRange(NSRange(location: 0, length: 6))
         let menu = view.dictionaryMenu(clickedIndex: 0)
-        XCTAssertEqual(menu.items.map(\.title).filter { !$0.isEmpty }, ["Copy", "Add to dictionary…", "Edit rule…", "Remove this alias"])
+        XCTAssertEqual(menu.items.map(\.title).filter { !$0.isEmpty }, ["Copy", "Add to dictionary…", "Edit replacement…", "Remove this spelling"])
         let add = try XCTUnwrap(menu.items.first { $0.title == "Add to dictionary…" })
         guard case .add(let source) = add.representedObject as? TranscriptDictionaryAction else { return XCTFail("Missing action") }
         XCTAssertEqual(source, "gee tub")

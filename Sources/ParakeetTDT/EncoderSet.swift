@@ -39,8 +39,6 @@ public final class EncoderSet {
         self.variants = variants.sorted { $0.melFrames < $1.melFrames }
     }
 
-    var longestWindow: Int { variants.last?.melFrames ?? ParakeetConstants.melFrames }
-
     /// The shortest variant that holds `melLength` frames, else the longest.
     func variant(forMelLength melLength: Int) -> Variant {
         variants.first { $0.melFrames >= melLength } ?? variants[variants.count - 1]

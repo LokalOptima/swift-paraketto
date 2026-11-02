@@ -126,10 +126,7 @@ final class DictationController: ObservableObject {
         if !Paster.isAccessibilityTrusted {
             Paster.requestAccessibility()
         }
-        Task {
-            await loadModel()
-            if CommandLine.arguments.contains("--demo-pill") { await demoPill() }
-        }
+        Task { await loadModel() }
     }
 
     /// (Re)arms the shortcut from settings. Nothing is armed while the menu recorder is
@@ -148,23 +145,6 @@ final class DictationController: ObservableObject {
         case .tap(let key):
             modifierTap = ModifierTap(key) { [weak self] in self?.toggleRecording() }
         }
-    }
-
-    /// `--demo-pill`: drive the overlay through recording and transcribing with synthetic
-    /// levels, without touching the microphone. Used to check the pill without a hotkey press.
-    private func demoPill() async {
-        destination = Destination(name: "Demo", bundleIdentifier: nil)
-        startSession()
-        state = .recording
-        overlay?.show()
-        for step in 0..<60 {
-            try? await Task.sleep(for: .milliseconds(50))
-            smoother.update(rms: step % 20 < 10 ? 0.05 : 0.002)
-        }
-        state = .transcribing
-        try? await Task.sleep(for: .seconds(1))
-        finishSession()
-        show(.notice("Demo finished"))
     }
 
     /// Escape while recording or transcribing: discard the audio, paste nothing.

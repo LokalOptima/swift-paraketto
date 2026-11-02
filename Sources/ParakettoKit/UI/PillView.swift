@@ -37,7 +37,6 @@ struct PillView: View {
 enum PillStyle {
     static let fill = Color(red: 0.078, green: 0.078, blue: 0.11).opacity(0.82)
     static let text = Color.white.opacity(0.95)
-    static let dimText = Color.white.opacity(0.5)
     static let bar = Color.white.opacity(0.92)
     static let error = Color(red: 1.0, green: 0.42, blue: 0.42)
 }

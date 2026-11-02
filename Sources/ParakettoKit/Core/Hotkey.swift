@@ -2,7 +2,6 @@ import Carbon.HIToolbox
 import Foundation
 
 /// A system-wide hotkey built on Carbon's RegisterEventHotKey.
-/// Delivers press and release; the dictation shortcut only uses the press.
 final class Hotkey {
     struct Binding {
         let keyCode: UInt32
@@ -28,11 +27,9 @@ final class Hotkey {
     private var hotKeyRef: EventHotKeyRef?
     private var handlerRef: EventHandlerRef?
     private let onPress: () -> Void
-    private let onRelease: () -> Void
 
-    init(binding: Binding, onPress: @escaping () -> Void, onRelease: @escaping () -> Void = {}) {
+    init(binding: Binding, onPress: @escaping () -> Void) {
         self.onPress = onPress
-        self.onRelease = onRelease
         id = Self.nextID
         Self.nextID += 1
         installHandler()
@@ -45,10 +42,7 @@ final class Hotkey {
     }
 
     private func installHandler() {
-        var eventTypes = [
-            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
-            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased)),
-        ]
+        var pressed = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         let selfPointer = Unmanaged.passUnretained(self).toOpaque()
         let status = InstallEventHandler(
             GetApplicationEventTarget(),
@@ -62,15 +56,11 @@ final class Hotkey {
                     nil, MemoryLayout<EventHotKeyID>.size, nil, &hotKeyID
                 )
                 guard hotKeyID.id == hotkey.id else { return noErr }
-                switch GetEventKind(event) {
-                case UInt32(kEventHotKeyPressed): hotkey.onPress()
-                case UInt32(kEventHotKeyReleased): hotkey.onRelease()
-                default: break
-                }
+                hotkey.onPress()
                 return noErr
             },
-            eventTypes.count,
-            &eventTypes,
+            1,
+            &pressed,
             selfPointer,
             &handlerRef
         )

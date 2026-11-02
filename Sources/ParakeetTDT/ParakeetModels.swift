@@ -22,8 +22,6 @@ public enum ParakeetConstants {
     public static let sampleRate = 16_000
     /// The exported preprocessor and encoder take exactly this many samples (15 s).
     public static let windowSamples = 240_000
-    public static let melBins = 128
-    public static let melFrames = 1501
     /// Audio samples per encoder frame: 10 ms mel hop times 8x subsampling.
     public static let samplesPerFrame = 1280
     public static let encoderHiddenSize = 1024

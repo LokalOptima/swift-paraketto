@@ -27,13 +27,6 @@ extension MLMultiArray {
         }
     }
 
-    var firstFloat: Float {
-        switch dataType {
-        case .float32: return floatPointer.pointee
-        default: return self[0].floatValue
-        }
-    }
-
     /// Copies `count` contiguous Float32 values from this array's start into `destination`,
     /// regardless of the array's shape (used for the decoder output, [1,640,1] or [1,1,640]).
     func copyFloats(count: Int, to destination: UnsafeMutablePointer<Float>) {

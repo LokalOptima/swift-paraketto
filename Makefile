@@ -17,7 +17,7 @@ ICON_SOURCE   := Resources/paraketto.png
 FIXTURES      := tests/fixtures/librispeech_fluidaudio.tsv
 CLIPS         ?= data/librispeech/*.wav
 # Signing. macOS ties the Accessibility grant to the app's signature. With the "Paraketto Dev"
-# self-signed certificate in the login keychain (see README) every build carries the same
+# self-signed certificate in the login keychain (see docs/internals.md) every build carries the same
 # signature and the grant survives; without it codesign falls back to ad-hoc ("-"), whose
 # signature changes on every build. The certificate is selected by the SHA-1 hash that
 # `security find-identity` prints, so a certificate imported twice is not "ambiguous" to codesign.

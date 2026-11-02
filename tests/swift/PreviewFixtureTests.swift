@@ -63,6 +63,10 @@ final class PreviewFixtureTests: XCTestCase {
         XCTAssertNil(controller.modelError)
         XCTAssertNil(controller.fileImport)
         XCTAssertTrue(controller.importErrors.isEmpty)
+        controller.showPreview(.idle, isShortcutInUse: true)
+        XCTAssertTrue(controller.isShortcutInUse)
+        controller.showPreview(.idle)
+        XCTAssertFalse(controller.isShortcutInUse)
     }
 }
 #endif

@@ -8,14 +8,11 @@ PREPARE_MODELS ?= 1
 INSTALL_APP   ?= 1
 INSTALL_DIR   ?= /Applications
 BINARY        := .build/$(CONFIG)/ParakettoLauncher
-CLI           := .build/$(CONFIG)/paraketto-cli
 CONTENTS      := $(BUNDLE)/Contents
 VAD_PACKAGE   := Resources/VadHead.mlpackage
 VAD_COMPILED  := .build/VadHead.mlmodelc
 APP_ICON      := .build/Paraketto.icns
 ICON_SOURCE   := Resources/paraketto.png
-FIXTURES      := tests/fixtures/librispeech_fluidaudio.tsv
-CLIPS         ?= data/librispeech/*.wav
 # Signing. macOS ties the Accessibility grant to the app's signature. With the "Paraketto Dev"
 # self-signed certificate in the login keychain (see docs/internals.md) every build carries the same
 # signature and the grant survives; without it codesign falls back to ad-hoc ("-"), whose
@@ -27,9 +24,7 @@ SIGN_NAME     ?= Paraketto Dev
 SIGN_IDENTITY ?= $(or $(shell security find-identity -p codesigning 2>/dev/null | grep -F '"$(SIGN_NAME)"' | head -1 | awk '{print $$2}'),-)
 SIGN_IDENTITY := $(SIGN_IDENTITY)
 
-.PHONY: all build bundle xcode-bundle icons run prepare-models trust vad cli test test-models compare longform vad-export encoder-export decoder-export clean
-
-MODELS_DIR    := $(HOME)/Library/Application Support/Paraketto/models
+.PHONY: all build bundle xcode-bundle icons run trust vad clean
 
 all: bundle
 
@@ -90,10 +85,6 @@ xcode-bundle: vad icons
 	cp $(APP_ICON) .build/ParakettoMenu.png "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/"
 	cp -R $(VAD_COMPILED) "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/"
 
-# Explicitly download and prepare Ultra; bundle alone only prepares an installed model.
-prepare-models: bundle
-	$(CONTENTS)/MacOS/$(APP_NAME) --prepare-models
-
 run: bundle
 ifeq ($(INSTALL_APP),1)
 	open "$(INSTALL_DIR)/$(BUNDLE)"
@@ -106,42 +97,6 @@ endif
 trust:
 	tccutil reset Accessibility $(BUNDLE_ID)
 	open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
-
-cli: build vad
-
-test: vad
-	swift test -c $(CONFIG)
-
-test-models: vad
-	PARAKETTO_MODEL_TESTS=1 swift test -c $(CONFIG)
-
-# Transcribes the LibriSpeech clips and checks every transcript against FluidAudio's.
-compare: cli
-	$(CLI) --vad $(VAD_COMPILED) --chunk-ms 100 --compare $(FIXTURES) --hypotheses .build/hypotheses.tsv $(CLIPS) | tail -2
-	cd tools/export && uv run python ../../tests/score.py ../../$(FIXTURES) ../../.build/hypotheses.tsv
-
-# Joins the clips into one to three minute files and scores the recording-time segmentation on them.
-longform: cli
-	cd tools/export && uv run python ../../tests/make_longform.py --clips "$(abspath $(dir $(firstword $(wildcard $(CLIPS)))))" --out ../../.build/longform
-	$(CLI) --vad $(VAD_COMPILED) --chunk-ms 100 --compare .build/longform/reference.tsv --hypotheses .build/longform/hypotheses.tsv .build/longform/gap*.wav | tail -2
-	cd tools/export && uv run python ../../tests/score.py ../../.build/longform/reference.tsv ../../.build/longform/hypotheses.tsv
-
-# Re-exports the VAD head from moondream/parakeet-ultra (needs uv; fetches ~9 MB of weights).
-vad-export:
-	cd tools/export && uv run python export_vad_head.py --out ../../$(VAD_PACKAGE)
-
-# Exports the encoder with 5 s, 10 s and 15 s windows (needs uv; downloads the 1.2 GB checkpoint once)
-# and compiles it where the app and CLI pick it up automatically.
-encoder-export:
-	cd tools/export && uv run python export_encoder.py --out "$(MODELS_DIR)/parakeet-ultra-encoder/Encoder.mlpackage"
-	rm -rf "$(MODELS_DIR)/parakeet-ultra-encoder/Encoder.mlmodelc"
-	xcrun coremlcompiler compile "$(MODELS_DIR)/parakeet-ultra-encoder/Encoder.mlpackage" "$(MODELS_DIR)/parakeet-ultra-encoder"
-
-# Exports the fused decoder+joint step model (needs uv; fetches ~36 MB of weights) and compiles it.
-decoder-export:
-	cd tools/export && uv run python export_fused_decoder.py --out "$(MODELS_DIR)/parakeet-ultra-decoder/DecoderJoint.mlpackage"
-	rm -rf "$(MODELS_DIR)/parakeet-ultra-decoder/DecoderJoint.mlmodelc"
-	xcrun coremlcompiler compile "$(MODELS_DIR)/parakeet-ultra-decoder/DecoderJoint.mlpackage" "$(MODELS_DIR)/parakeet-ultra-decoder"
 
 clean:
 	rm -rf $(BUNDLE) .build

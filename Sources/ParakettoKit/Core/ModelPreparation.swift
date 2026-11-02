@@ -6,7 +6,7 @@ import ParakeetTDT
 enum ModelPreparation {
     static func run(cachedOnly: Bool) async throws {
         if cachedOnly, ModelStore().cachedDirectory == nil {
-            report("Skipping preparation: model not downloaded (use make prepare-models to download it).")
+            report("Skipping preparation: model not downloaded yet; the app downloads it on first launch.")
             return
         }
         let start = Date()

@@ -28,18 +28,5 @@ let package = Package(
             path: "Sources/ParakettoLauncher",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
-        // Command-line transcription for testing and benchmarking against reference transcripts.
-        .executableTarget(
-            name: "paraketto-cli",
-            dependencies: ["ParakeetTDT"],
-            path: "Sources/ParakettoCLI",
-            swiftSettings: [.swiftLanguageMode(.v5)]
-        ),
-        .testTarget(
-            name: "ParakettoTests",
-            dependencies: ["ParakeetTDT", "ParakettoKit"],
-            path: "tests/swift",
-            swiftSettings: [.swiftLanguageMode(.v5)]
-        ),
     ]
 )

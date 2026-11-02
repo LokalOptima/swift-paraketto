@@ -95,7 +95,7 @@ final class DictationController: ObservableObject {
     private var hotkey: Hotkey?
     private var modifierTap: ModifierTap?
     private var shortcutSubscription: AnyCancellable?
-    private var escapeMonitor: Any?
+    private var escapeMonitors: [Any] = []
     private var overlay: Overlay?
     private var smoother = LevelSmoother()
     private var meterTask: Task<Void, Never>?
@@ -392,12 +392,20 @@ final class DictationController: ObservableObject {
         elapsed = 0
         smoother.reset()
         inputLevel = 0
-        // A passive monitor rather than a Carbon hotkey: registering a hotkey while ⌃⌥Space is
+        // Passive monitors rather than a Carbon hotkey: registering a hotkey while ⌃⌥Space is
         // physically held makes Carbon drop that key's release event, which left recordings stuck.
-        escapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        // The global monitor needs Accessibility and misses this app's own windows, hence the local one.
+        let cancelOnEscape: (NSEvent) -> Void = { [weak self] event in
             guard event.keyCode == 53 else { return }
             Task { @MainActor in self?.cancel() }
         }
+        escapeMonitors = [
+            NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: cancelOnEscape),
+            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                cancelOnEscape(event)
+                return event
+            },
+        ].compactMap { $0 }
         meterTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: Self.meterInterval)
@@ -412,8 +420,8 @@ final class DictationController: ObservableObject {
     }
 
     private func finishSession() {
-        if let escapeMonitor { NSEvent.removeMonitor(escapeMonitor) }
-        escapeMonitor = nil
+        for monitor in escapeMonitors { NSEvent.removeMonitor(monitor) }
+        escapeMonitors = []
         meterTask?.cancel()
         meterTask = nil
     }

@@ -12,10 +12,10 @@ Neural Engine with Core ML. Audio and transcripts stay on the Mac.
 - Transcription runs while you speak: every pause of 0.8 s ends a segment and it is transcribed right away, so when you pause before stopping the text is already there
 - Floating pill while recording: a level meter on a -65 to -25 dBFS scale with 30 ms attack / 160 ms release smoothing; brief peaks are retained between display updates. Errors in the pill are kept short; the details are in `~/Library/Logs/Paraketto.log`
 - Text is pasted only if the app that had focus when you started still has it; otherwise it is kept in history. Dictating with Paraketto itself in front only copies the text
-- **Transcripts** (right-click the menu-bar icon, or choose Transcripts in its menu): the last 7 days of recordings grouped by day, with playback, copy, delete, and word count stats. Entries show up to four lines; hover to reveal actions and expand longer text
-- **Search** (top of Transcripts): finds text as shown in the last 7 days, ignoring case and accents, including stroked letters such as `ł` and `ø`. Matches are highlighted, and each entry and the footer count them. An entry whose matches would fall past its fourth line shows excerpts sampled across them instead, still within four lines; expanding it shows the whole transcript with every match highlighted. A new dictation or a dropped file clears the search so its transcript isn't hidden, and a search that hides the recording being played stops it
+- **Transcripts** (right-click the menu-bar icon, or choose Transcripts in its menu): the last 7 days of recordings grouped by day, with download, copy, delete, and word count stats. Entries show up to four lines; hover to reveal actions and expand longer text. Download saves the recording as a WAV through a save dialog that starts in Downloads, because writing there directly would need a permission of its own
+- **Search** (top of Transcripts): finds text as shown in the last 7 days, ignoring case and accents, including stroked letters such as `ł` and `ø`. Matches are highlighted, and each entry and the footer count them. An entry whose matches would fall past its fourth line shows excerpts sampled across them instead, still within four lines; expanding it shows the whole transcript with every match highlighted. A new dictation or a dropped file clears the search so its transcript isn't hidden
 - **Esc**: clears the search first, and cancels an import once the search is empty. During a dictation it discards the dictation, unless a text field holding text has focus, where it acts on that field
-- **Transcripts folder** (the button beside search): every transcript is also a plain text file in `~/Library/Application Support/Paraketto/transcripts/`, named by date and time and holding the text as shown. A transcript leaves the Transcripts view after 7 days, so search stays fast however many pile up. Its file stays and its recording is deleted. Deleting a transcript in the app also deletes its file
+- **Transcripts folder** (the button beside search): every transcript is also a plain text file in `~/Library/Application Support/Paraketto/transcripts/`, named by date and time and holding the text as shown. A transcript leaves the Transcripts view after 7 days, so search stays fast however many pile up. Its file stays and its recording is deleted, so a recording worth keeping has to be downloaded before then. Deleting a transcript in the app also deletes its file
 - **Dictionary** (the other tab in the same window): explicit, case-sensitive replacements with multiple spellings per target. Select transcript text and right-click to add one; underlines show replacements. Changes update every transcript in the Transcripts view from its original
 - Drop an audio file onto Transcripts to transcribe it locally, including WAV, M4A and AAC files supported by macOS
 - Supports 25 European languages with automatic detection, punctuation, and capitalization
@@ -250,8 +250,7 @@ as audio arrives; the transcriber reads small batches from it. Only the latest f
 notification is queued, so inference lag accumulates on disk instead of in an audio queue.
 At completion, the WAV moves into History without loading it into memory. Cancelled or
 failed recordings are removed when their users release the temporary file. Transcript
-tokens still grow with recording length. New recordings use about 3.84 MB of disk per minute;
-existing PCM16 History recordings remain playable.
+tokens still grow with recording length. New recordings use about 3.84 MB of disk per minute.
 
 VAD blocks end on whole 80 ms frames (14.96 s per complete block), so rounding each block
 does not accumulate a timestamp offset over long recordings. The encoder's maximum input remains 15 s.

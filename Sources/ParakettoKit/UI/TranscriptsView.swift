@@ -1,13 +1,12 @@
 import AppKit
 import SwiftUI
 
-/// The last week's dictations grouped by day, with search, the folder of all transcripts, and playback, copy and delete per entry.
+/// The last week's dictations grouped by day, with search, the folder of all transcripts, and download, copy and delete per entry.
 struct TranscriptsView: View {
     let removeAlias: (String, UUID) -> Void
     @ObservedObject var controller: DictationController
     @ObservedObject var store: HistoryStore
     @ObservedObject var shortcuts: ShortcutSettings
-    @StateObject private var player = AudioPlayer()
     @State private var isDropTargeted = false
     @State private var query: String
     /// Kept here rather than on the rows, so an expanded row stays expanded when a search hides it for a moment.
@@ -111,7 +110,7 @@ struct TranscriptsView: View {
                             ForEach(sections(of: results.entries), id: \.day) { section in
                                 Section {
                                     ForEach(section.entries) { entry in
-                                        TranscriptRow(entry: entry, store: store, player: player, dictionary: controller.dictionary,
+                                        TranscriptRow(entry: entry, store: store, dictionary: controller.dictionary,
                                                       removeAlias: removeAlias, matches: results.matches[entry.id] ?? [],
                                                       expanded: isExpanded(entry))
                                             .padding(.horizontal, 16)
@@ -157,20 +156,13 @@ struct TranscriptsView: View {
         .animation(.easeOut(duration: reduceMotion ? 0 : 0.16), value: isDropTargeted)
         .dropDestination(for: URL.self) { urls, _ in
             let accepted = controller.importFiles(urls)
-            if accepted {
-                player.stop()
-                // What comes out of the file may not match a search left in the box.
-                query = ""
-            }
+            // What comes out of the file may not match a search left in the box.
+            if accepted { query = "" }
             return accepted
         } isTargeted: { isDropTargeted = $0 }
         .onExitCommand {
             // Clearing the search comes first, as it is the one that loses nothing.
             if !query.isEmpty { query = "" } else if controller.fileImport != nil { controller.cancelFileImport() }
-        }
-        .onChange(of: results.entries.map(\.id)) { _, visible in
-            // The Stop control is on the row, so audio must not outlive a row that a search hides or a week removes.
-            if let playing = player.playingID, !visible.contains(playing) { player.stop() }
         }
         .onChange(of: store.entries.count) { old, new in
             // A new dictation may not match a search left in the box. Imports clear it when

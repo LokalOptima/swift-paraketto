@@ -1,10 +1,10 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct TranscriptRow: View {
     let entry: HistoryEntry
     @ObservedObject var store: HistoryStore
-    @ObservedObject var player: AudioPlayer
     let dictionary: DictionaryStore
     let removeAlias: (String, UUID) -> Void
     /// Where the active search matches this transcript.
@@ -20,7 +20,7 @@ struct TranscriptRow: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
 
-    private enum Action: Hashable { case expand, play, copy, delete }
+    private enum Action: Hashable { case expand, download, copy, delete }
     private var showsActions: Bool { isHovered || focusedAction != nil || voiceOverEnabled }
 
     private var canExpand: Bool { isTruncated || expanded }
@@ -87,16 +87,14 @@ struct TranscriptRow: View {
 
     private var actions: some View {
         HStack(spacing: 12) {
-            Button {
-                player.toggle(entry, url: store.audioURL(for: entry))
-            } label: {
-                Image(systemName: player.playingID == entry.id ? "stop.fill" : "play.fill")
+            Button { downloadRecording() } label: {
+                Image(systemName: "square.and.arrow.down")
                     .frame(width: 28, height: 24)
                     .contentShape(Rectangle())
             }
-            .focused($focusedAction, equals: .play)
-            .accessibilityLabel(player.playingID == entry.id ? "Stop recording" : "Play recording")
-            .help(player.playingID == entry.id ? "Stop" : "Play recording")
+            .focused($focusedAction, equals: .download)
+            .accessibilityLabel("Download recording")
+            .help("Download recording")
 
             Button(action: copyTranscript) {
                 Image(systemName: copied ? "checkmark" : "doc.on.doc")
@@ -111,7 +109,6 @@ struct TranscriptRow: View {
             .help(copied ? "Copied!" : "Copy transcript")
 
             Button(role: .destructive) {
-                if player.playingID == entry.id { player.stop() }
                 store.remove(entry)
             } label: {
                 Image(systemName: "trash")
@@ -127,6 +124,27 @@ struct TranscriptRow: View {
         .opacity(showsActions ? 1 : 0)
         .allowsHitTesting(showsActions)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.12), value: showsActions)
+    }
+
+    /// Asks where to save because writing straight to Downloads would need a permission of its own.
+    private func downloadRecording() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.wav]
+        panel.nameFieldStringValue = store.recordingFilename(for: entry)
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        Task {
+            let response = if let window = NSApplication.shared.mainWindow {
+                await panel.beginSheetModal(for: window)
+            } else {
+                await panel.begin()
+            }
+            guard response == .OK, let destination = panel.url else { return }
+            do {
+                try await store.saveRecording(of: entry, to: destination)
+            } catch {
+                NSAlert(error: error).runModal()
+            }
+        }
     }
 
     private func copyTranscript() {

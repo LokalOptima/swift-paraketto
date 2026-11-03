@@ -1,7 +1,7 @@
 import Foundation
 
 /// A disk-backed recording shared by capture and transcription. Float32 WAV preserves
-/// the exact samples for recognition and can be moved straight into History for replay.
+/// the exact samples for recognition and can be moved straight into History.
 /// The temporary file is removed when its last owner releases it (including cancellation).
 final class RecordingFile: @unchecked Sendable {
     let url: URL

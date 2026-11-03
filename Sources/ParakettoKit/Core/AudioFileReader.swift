@@ -15,7 +15,7 @@ final class AudioFileReader {
 
     init(url: URL) throws {
         file = try AVAudioFile(forReading: url)
-        let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000,
+        let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: AudioRecorder.sampleRate,
                                    channels: 1, interleaved: false)!
         guard let converter = AVAudioConverter(from: file.processingFormat, to: target),
               let input = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 4096),

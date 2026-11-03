@@ -34,7 +34,7 @@ struct TranscriptRow: View {
                         DictionaryEditor(store: dictionary, draft: $0)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Button(action: toggleExpansion) {
+                Button { toggleExpansion() } label: {
                     Image(systemName: expanded ? "chevron.up" : "chevron.down")
                         .frame(width: 24, height: 18)
                         .contentShape(Rectangle())
@@ -96,7 +96,7 @@ struct TranscriptRow: View {
             .accessibilityLabel("Download recording")
             .help("Download recording")
 
-            Button(action: copyTranscript) {
+            Button { copyTranscript() } label: {
                 Image(systemName: copied ? "checkmark" : "doc.on.doc")
                     .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
                     .foregroundStyle(copied ? Color(nsColor: .systemGreen) : .secondary)
@@ -170,5 +170,4 @@ struct TranscriptRow: View {
     private func toggleExpansion() {
         withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.15)) { expanded.toggle() }
     }
-
 }

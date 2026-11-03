@@ -122,12 +122,7 @@ final class AudioRecorder {
 
     enum RecorderError: LocalizedError {
         case noInputDevice
-
-        var errorDescription: String? {
-            switch self {
-            case .noInputDevice: return "No microphone"
-            }
-        }
+        var errorDescription: String? { "No microphone" }
     }
 }
 

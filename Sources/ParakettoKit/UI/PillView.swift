@@ -31,7 +31,6 @@ struct PillView: View {
             Text(controller.state.label)
         }
     }
-
 }
 
 enum PillStyle {

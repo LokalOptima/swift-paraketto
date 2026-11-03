@@ -40,6 +40,12 @@ struct HistoryEntry: Codable, Identifiable, Equatable {
 }
 
 enum TextSearch {
+    /// What to look for in what was typed, if anything. A single letter would match nearly everything.
+    static func term(in typed: String) -> String {
+        let term = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        return term.count < 2 ? "" : term
+    }
+
     /// Every occurrence of `query`, ignoring case and accents. UTF-16 ranges, matching AppKit's text system.
     static func matches(of query: String, in text: String) -> [NSRange] {
         guard !query.isEmpty else { return [] }

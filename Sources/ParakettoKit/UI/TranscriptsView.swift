@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Past dictations grouped by day, with search, and playback, copy and delete per entry.
+/// The last week's dictations grouped by day, with search, the folder of all transcripts, and playback, copy and delete per entry.
 struct TranscriptsView: View {
     let removeAlias: (String, UUID) -> Void
     @ObservedObject var controller: DictationController
@@ -52,9 +52,14 @@ struct TranscriptsView: View {
         let results = searchResults
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                SearchField(prompt: "Search transcripts", text: $query)
+                SearchField(prompt: "Search the last \(HistoryStore.retentionDays) days", text: $query)
                     // While focused, the field would take a dropped file for itself and insert its path.
                     .disabled(isDropTargeted)
+                Button { openTranscriptsFolder() } label: {
+                    Image(systemName: "folder").frame(width: 16, height: 16)
+                }
+                .buttonStyle(.bordered)
+                .help("Open the folder with all transcripts").accessibilityLabel("Open the folder with all transcripts")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -86,14 +91,18 @@ struct TranscriptsView: View {
             }
             if store.entries.isEmpty {
                 ContentUnavailableView(
-                    "No transcripts yet",
+                    "No recent transcripts",
                     systemImage: "mic",
-                    description: Text("Start and stop with \(shortcuts.shortcut.label).")
+                    description: Text("Start and stop with \(shortcuts.shortcut.label). Older transcripts are in the transcripts folder.")
                 )
                 .frame(maxHeight: .infinity)
             } else if results.entries.isEmpty {
-                ContentUnavailableView.search(text: searchText)
-                    .frame(maxHeight: .infinity)
+                ContentUnavailableView {
+                    Label("No results for “\(searchText)”", systemImage: "magnifyingglass")
+                } description: {
+                    Text("Search covers the last \(HistoryStore.retentionDays) days. Older transcripts are in the transcripts folder.")
+                }
+                .frame(maxHeight: .infinity)
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -159,15 +168,21 @@ struct TranscriptsView: View {
             // Clearing the search comes first, as it is the one that loses nothing.
             if !query.isEmpty { query = "" } else if controller.fileImport != nil { controller.cancelFileImport() }
         }
-        .onChange(of: searchText) {
-            // The Stop control is on the row, so a search that hides the row must not leave audio playing.
-            if let playing = player.playingID, !results.entries.contains(where: { $0.id == playing }) { player.stop() }
+        .onChange(of: results.entries.map(\.id)) { _, visible in
+            // The Stop control is on the row, so audio must not outlive a row that a search hides or a week removes.
+            if let playing = player.playingID, !visible.contains(playing) { player.stop() }
         }
         .onChange(of: store.entries.count) { old, new in
             // A new dictation may not match a search left in the box. Imports clear it when
             // dropped instead, so that a search started while they run isn't lost with each file.
             if new > old, controller.fileImport == nil { query = "" }
         }
+    }
+
+    private func openTranscriptsFolder() {
+        // Nothing may have been saved yet, or the folder may have been removed.
+        try? FileManager.default.createDirectory(at: store.transcriptsDirectory, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(store.transcriptsDirectory)
     }
 
     private var separator: some View {
@@ -185,6 +200,8 @@ struct TranscriptsView: View {
     private func footer(_ results: (entries: [HistoryEntry], matches: [UUID: [NSRange]])) -> some View {
         HStack {
             if searchText.isEmpty {
+                Text("Last \(HistoryStore.retentionDays) days")
+                Text("·").foregroundStyle(.tertiary)
                 Text("^[\(store.entries.count) transcript](inflect: true)")
                 Text("·").foregroundStyle(.tertiary)
                 Text("^[\(store.totalWords) word](inflect: true)")

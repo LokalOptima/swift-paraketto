@@ -18,6 +18,7 @@ Tests, `paraketto-cli`, benchmarks and model exporters live on the `dev-tools` b
 
 - Audio and transcripts stay on the Mac, and `Log` never receives dictated text.
 - The history JSON `text` is the immutable original. Display text is derived from it and the dictionary.
+- Files in `transcripts/` are permanent, and only deleting a transcript in the app removes one. An entry leaves the Transcripts view, and its recording is deleted, only once its file is saved.
 - Keep `#Preview`s and their fixtures inside `#if DEBUG`. They use `PreviewFixtures`, never real history, models or hotkeys.
 - In previewed files write `Button("Save") { save() }`, not `Button("Save", action: save)`. The second form silently breaks the canvas's Selectable mode.
 - After a source file is added or removed outside Xcode, `Paraketto.xcodeproj` must be reopened, or the canvas reports `Cannot find … in scope`.

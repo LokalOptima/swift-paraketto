@@ -19,16 +19,19 @@ struct HistoryEntry: Codable, Identifiable, Equatable {
     var inferenceMilliseconds: Int
     var delivery: Delivery
     var sourceFilename: String? = nil
+    /// Set once the transcript has its file in the transcripts folder, so one deleted there later isn't recreated.
+    var textFilename: String? = nil
 
     // Derived only; deliberately excluded from JSON so the original stays immutable.
     var replacementResult: ReplacementResult? = nil
     var displayText: String { replacementResult?.text ?? text }
+    var textFileContents: String { displayText + "\n" }
     var processed: ReplacementResult {
         replacementResult ?? ReplacementResult(original: text, text: text, replacements: [])
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, date, text, destination, duration, inferenceMilliseconds, delivery, sourceFilename
+        case id, date, text, destination, duration, inferenceMilliseconds, delivery, sourceFilename, textFilename
     }
 
     var wordCount: Int {
@@ -113,25 +116,42 @@ enum TextSearch {
     }
 }
 
-/// Persists entries as `<id>.json` plus `<id>.wav` under Application Support.
+/// Persists the entries in the Transcripts view as `<id>.json` plus `<id>.wav` under Application Support.
+/// Each transcript also gets a permanent text file in the `transcripts` folder next to them. Past the
+/// retention period an entry leaves the view, its WAV is deleted and its JSON moves to `archive`, which
+/// nothing reads, so loading and searching don't slow down as transcripts pile up.
 @MainActor
 final class HistoryStore: ObservableObject {
+    static let retentionDays = 7
+
     @Published private(set) var entries: [HistoryEntry] = []
 
     private var matcher = DictionaryMatcher()
     private var dictionarySubscription: AnyCancellable?
+    private var evictionSubscription: AnyCancellable?
     let directory: URL
+    let transcriptsDirectory: URL
 
     init(directory: URL? = nil, dictionary: DictionaryStore? = nil) {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         self.directory = directory ?? support.appendingPathComponent("Paraketto/history", isDirectory: true)
+        transcriptsDirectory = self.directory.deletingLastPathComponent().appendingPathComponent("transcripts", isDirectory: true)
         try? FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
         entries = loadAll()
         dictionarySubscription = dictionary?.$rules.sink { [weak self] rules in
             guard let self else { return }
             matcher = DictionaryMatcher(rules: rules)
-            entries = entries.map { self.processed($0) }
+            entries = entries.map { entry in
+                let updated = self.processed(entry)
+                self.updateTextFile(of: entry, to: updated)
+                return updated
+            }
         }
+        evictExpired()
+        // A menu-bar app can stay open for weeks.
+        evictionSubscription = Timer.publish(every: 3600, tolerance: 300, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in self?.evictExpired() }
     }
 
     func add(_ entry: HistoryEntry, recording: RecordingFile) throws {
@@ -143,7 +163,81 @@ final class HistoryStore: ObservableObject {
             try? FileManager.default.removeItem(at: audioURL(for: entry))
             throw error
         }
-        entries.insert(processed(entry), at: 0)
+        entries.insert(withTextFile(processed(entry)), at: 0)
+    }
+
+    /// Takes entries past the retention period out of the view, but only once their text is safe in its file.
+    /// Saves any file that failed before, which is also how transcripts from before this folder existed get theirs.
+    func evictExpired(now: Date = Date()) {
+        entries = entries.map(withTextFile)
+        let cutoff = now.addingTimeInterval(-Double(Self.retentionDays) * 24 * 60 * 60)
+        entries.removeAll { $0.date < cutoff && $0.textFilename != nil && archive($0) }
+    }
+
+    /// Deletes the recording and files away the JSON. The recording goes first, so that if this
+    /// stops halfway the JSON is still in place to try again from and no recording is left behind.
+    private func archive(_ entry: HistoryEntry) -> Bool {
+        let destination = directory.appendingPathComponent("archive", isDirectory: true)
+        let audio = audioURL(for: entry), json = jsonURL(for: entry)
+        do {
+            try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+            if FileManager.default.fileExists(atPath: audio.path) { try FileManager.default.removeItem(at: audio) }
+            if FileManager.default.fileExists(atPath: json.path) {
+                try FileManager.default.moveItem(at: json, to: destination.appendingPathComponent(json.lastPathComponent))
+            }
+            return true
+        } catch {
+            Log.info("Could not archive a transcript: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    /// The file and its name in the JSON are saved together or not at all, or every launch would add another file.
+    private func withTextFile(_ entry: HistoryEntry) -> HistoryEntry {
+        guard entry.textFilename == nil else { return entry }
+        let url = newTextFileURL(for: entry)
+        var result = entry
+        result.textFilename = url.lastPathComponent
+        do {
+            try FileManager.default.createDirectory(at: transcriptsDirectory, withIntermediateDirectories: true)
+            try entry.textFileContents.write(to: url, atomically: true, encoding: .utf8)
+            try JSONEncoder().encode(result).write(to: jsonURL(for: result), options: .atomic)
+            return result
+        } catch {
+            try? FileManager.default.removeItem(at: url)
+            Log.info("Could not save a transcript's text file: \(error.localizedDescription)")
+            return entry
+        }
+    }
+
+    /// A dictionary change reaches a text file only while it still holds what was last saved there,
+    /// so a file that was edited, renamed or deleted in the meantime stays as it is.
+    private func updateTextFile(of entry: HistoryEntry, to updated: HistoryEntry) {
+        guard updated.displayText != entry.displayText, let url = textFileURL(for: entry),
+              (try? String(contentsOf: url, encoding: .utf8)) == entry.textFileContents else { return }
+        try? updated.textFileContents.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    private static let textFilenameFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
+        return formatter
+    }()
+
+    private func newTextFileURL(for entry: HistoryEntry) -> URL {
+        let stamp = Self.textFilenameFormatter.string(from: entry.date)
+        var url = transcriptsDirectory.appendingPathComponent("\(stamp).txt")
+        var copy = 1
+        while FileManager.default.fileExists(atPath: url.path) {
+            copy += 1
+            url = transcriptsDirectory.appendingPathComponent("\(stamp) \(copy).txt")
+        }
+        return url
+    }
+
+    private func textFileURL(for entry: HistoryEntry) -> URL? {
+        entry.textFilename.map { transcriptsDirectory.appendingPathComponent($0) }
     }
 
     func process(_ text: String) -> ReplacementResult { matcher.apply(to: text) }
@@ -167,6 +261,7 @@ final class HistoryStore: ObservableObject {
     func remove(_ entry: HistoryEntry) {
         try? FileManager.default.removeItem(at: jsonURL(for: entry))
         try? FileManager.default.removeItem(at: audioURL(for: entry))
+        if let url = textFileURL(for: entry) { try? FileManager.default.removeItem(at: url) }
         entries.removeAll { $0.id == entry.id }
     }
 

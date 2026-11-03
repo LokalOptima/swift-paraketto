@@ -337,7 +337,7 @@ utterance is below perception, so it was removed in favour of the framework path
 
 ### Checking against FluidAudio
 
-`make test` checks dictionary matching and selection, original preservation, file storage, audio decoding, playback, paste delivery, and cache validation
+`make test` checks dictionary matching and selection, original preservation, file storage, audio decoding, recording downloads, paste delivery, and cache validation
 without downloading recognition models. Plain `swift test` also runs the debug-only preview fixture tests. Tests that need the real models are skipped by default.
 After `make prepare-models`, enable them with the LibriSpeech `1995-1826-0002.wav` fixture:
 

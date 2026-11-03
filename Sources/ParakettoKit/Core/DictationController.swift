@@ -147,7 +147,7 @@ final class DictationController: ObservableObject {
         guard !shortcuts.isRecording else { return }
         switch shortcuts.shortcut {
         case .chord(let chord):
-            let hotkey = Hotkey(binding: Hotkey.Binding(chord), onPress: { [weak self] in self?.toggleRecording() })
+            let hotkey = Hotkey(chord: chord, onPress: { [weak self] in self?.toggleRecording() })
             self.hotkey = hotkey
             isShortcutInUse = hotkey.registrationError != nil
             if isShortcutInUse, state == .idle {

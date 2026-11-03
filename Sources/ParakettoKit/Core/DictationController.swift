@@ -2,6 +2,14 @@ import AppKit
 import Combine
 import Foundation
 
+/// What the pill's meter shows. Separate from the controller because it publishes 20 times a
+/// second while recording, which must not re-render every view that observes the controller.
+@MainActor
+final class RecordingMeter: ObservableObject {
+    @Published fileprivate(set) var level: Float = 0
+    @Published fileprivate(set) var elapsed: TimeInterval = 0
+}
+
 /// Owns the record → transcribe → paste loop and exposes state for the menu bar, overlay and history.
 @MainActor
 final class DictationController: ObservableObject {
@@ -56,8 +64,7 @@ final class DictationController: ObservableObject {
     }
     /// Set for Xcode's canvas, which must not write to the user's log or load models.
     private var isPreview = false
-    @Published private(set) var inputLevel: Float = 0
-    @Published private(set) var elapsed: TimeInterval = 0
+    let meter = RecordingMeter()
     @Published private(set) var destination: Destination?
     @Published private(set) var modelError: String?
     @Published private(set) var isLoadingModel = true
@@ -395,9 +402,9 @@ final class DictationController: ObservableObject {
     /// Watches for Escape and starts the meter/elapsed ticker for the duration of a dictation.
     private func startSession() {
         recordingStarted = Date()
-        elapsed = 0
+        meter.elapsed = 0
         smoother.reset()
-        inputLevel = 0
+        meter.level = 0
         // Passive monitors rather than a Carbon hotkey: registering a hotkey while ⌃⌥Space is
         // physically held makes Carbon drop that key's release event, which left recordings stuck.
         // The global monitor needs Accessibility and misses this app's own windows, hence the local one.
@@ -418,8 +425,8 @@ final class DictationController: ObservableObject {
                 guard let self, !Task.isCancelled else { return }
                 if self.state == .recording {
                     self.smoother.tick(interval: 0.05)
-                    self.inputLevel = self.smoother.level
-                    self.elapsed = Date().timeIntervalSince(self.recordingStarted)
+                    self.meter.level = self.smoother.level
+                    self.meter.elapsed = Date().timeIntervalSince(self.recordingStarted)
                 }
             }
         }
@@ -464,8 +471,8 @@ extension DictationController {
     }
 
     func showPreviewMeter(level: Float, elapsed: TimeInterval) {
-        inputLevel = level
-        self.elapsed = elapsed
+        meter.level = level
+        meter.elapsed = elapsed
     }
 }
 #endif

@@ -27,7 +27,9 @@ final class PreviewFixtures: ObservableObject {
             let samples = [
                 "I pushed the changes to gee tub, then checked the para keto build.",
                 "There is population size and the specific case. Replacements keep the same contrast as the surrounding text.",
-                String(repeating: "This longer transcript shows how text wraps and expands. ", count: 10),
+                String(repeating: "This longer transcript shows how text wraps and expands. ", count: 10)
+                    + "Only here does it mention the quarterly budget, so a search has to reach past the fourth line. "
+                    + String(repeating: "This longer transcript shows how text wraps and expands. ", count: 4),
                 "Yesterday’s note: send us the details at us@example.com."
             ]
             // Add oldest first, as HistoryStore inserts new recordings at the top.
@@ -72,6 +74,16 @@ struct LibraryPreview: View {
                 fixtures.controller.showPreview(fileImport == nil ? .idle : .transcribing,
                                                 fileImport: fileImport, importErrors: importErrors)
             }
+    }
+}
+
+struct TranscriptSearchPreview: View {
+    @StateObject private var fixtures = PreviewFixtures()
+    let query: String
+
+    var body: some View {
+        TranscriptsView(controller: fixtures.controller, removeAlias: { _, _ in }, query: query)
+            .frame(width: 560, height: 480)
     }
 }
 

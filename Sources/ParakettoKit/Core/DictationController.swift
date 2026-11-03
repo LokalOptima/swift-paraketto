@@ -407,16 +407,17 @@ final class DictationController: ObservableObject {
         meter.level = 0
         // Passive monitors rather than a Carbon hotkey: registering a hotkey while ⌃⌥Space is
         // physically held makes Carbon drop that key's release event, which left recordings stuck.
-        // The global monitor needs Accessibility and misses this app's own windows, hence the local one.
-        let cancelOnEscape: (NSEvent) -> Void = { [weak self] event in
-            guard event.keyCode == 53 else { return }
-            Task { @MainActor in self?.cancel() }
-        }
+        // The global monitor needs Accessibility and misses this app's own windows, hence the local
+        // one, which consumes the key so that one press never also acts on the window.
         escapeMonitors = [
-            NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: cancelOnEscape),
-            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-                cancelOnEscape(event)
-                return event
+            NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard event.keyCode == 53 else { return }
+                Task { @MainActor in self?.cancel() }
+            },
+            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard event.keyCode == 53, !Self.escapeBelongsToField(event.window?.firstResponder) else { return event }
+                Task { @MainActor in self?.cancel() }
+                return nil
             },
         ].compactMap { $0 }
         meterTask = Task { [weak self] in
@@ -430,6 +431,12 @@ final class DictationController: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Esc in a text field holding text is about that text, such as clearing a search, not about the dictation.
+    static func escapeBelongsToField(_ responder: NSResponder?) -> Bool {
+        guard let editor = responder as? NSTextView else { return false }
+        return editor.isFieldEditor && !editor.string.isEmpty
     }
 
     private func finishSession() {

@@ -8,25 +8,16 @@ struct DictionaryView: View {
     @State private var error: String?
 
     private var filtered: [DictionaryRule] {
-        store.rules.filter { rule in
-            query.isEmpty || ([rule.target] + rule.aliases).contains { $0.localizedCaseInsensitiveContains(query) }
+        let search = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return store.rules.filter { rule in
+            search.isEmpty || ([rule.target] + rule.aliases).contains { !TextSearch.matches(of: search, in: $0).isEmpty }
         }.sorted { $0.target.localizedStandardCompare($1.target) == .orderedAscending }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                OutlinedField {
-                    HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                        TextField("Search dictionary", text: $query).textFieldStyle(.plain)
-                        if !query.isEmpty {
-                            Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
-                                .buttonStyle(.borderless).accessibilityLabel("Clear search")
-                        }
-                    }
-                    .frame(height: 20)
-                }
+                SearchField(prompt: "Search dictionary", text: $query)
                 Button { newDraft = DictionaryDraft(rule: DictionaryRule(target: "", aliases: [])) } label: {
                     Image(systemName: "plus").frame(width: 16, height: 16)
                 }

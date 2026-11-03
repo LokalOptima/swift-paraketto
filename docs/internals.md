@@ -13,6 +13,8 @@ Neural Engine with Core ML. Audio and transcripts stay on the Mac.
 - Floating pill while recording: a level meter on a -65 to -25 dBFS scale with 30 ms attack / 160 ms release smoothing; brief peaks are retained between display updates. Errors in the pill are kept short; the details are in `~/Library/Logs/Paraketto.log`
 - Text is pasted only if the app that had focus when you started still has it; otherwise it is kept in history. Dictating with Paraketto itself in front only copies the text
 - **Transcripts** (right-click the menu-bar icon, or choose Transcripts in its menu): recordings grouped by day, with playback, copy, delete, and word count stats. Entries show up to four lines; hover to reveal actions and expand longer text
+- **Search** (top of Transcripts): finds text as shown, ignoring case and accents, including stroked letters such as `ł` and `ø`. Matches are highlighted, and each entry and the footer count them. An entry whose matches would fall past its fourth line shows excerpts sampled across them instead, still within four lines; expanding it shows the whole transcript with every match highlighted. A new dictation or a dropped file clears the search so its transcript isn't hidden, and a search that hides the recording being played stops it
+- **Esc**: clears the search first, and cancels an import once the search is empty. During a dictation it discards the dictation, unless a text field holding text has focus, where it acts on that field
 - **Dictionary** (the other tab in the same window): explicit, case-sensitive replacements with multiple spellings per target. Select transcript text and right-click to add one; underlines show replacements. Changes update every stored transcript from its original
 - Drop an audio file onto Transcripts to transcribe it locally, including WAV, M4A and AAC files supported by macOS
 - Supports 25 European languages with automatic detection, punctuation, and capitalization
@@ -93,7 +95,7 @@ whole preview, and other previews can stop selecting as well.
 | `MenuContent.swift` | Ready, Needs Accessibility, Needs Microphone, Shortcut in use, Downloading, Optimizing, Loading, Recording, Transcribing, Notice, Model failed |
 | `PillView.swift` | Recording (with a live meter), Transcribing, Copied, Kept in history, Error, All messages |
 | `ShortcutRecorder.swift` | All states, Interactive |
-| `TranscriptsView.swift` | Transcripts, Empty transcripts, Importing, Import failed, Importing with errors, Drop audio files, Drop while busy |
+| `TranscriptsView.swift` | Transcripts, Empty transcripts, Search, Search in a long transcript, Search without matches, Importing, Import failed, Importing with errors, Drop audio files, Drop while busy |
 | `DictionaryView.swift` | Dictionary, Empty dictionary |
 | `DictionaryEditor.swift` | Add replacement, Edit replacement, From a transcript, Adding to an existing target, Many spellings, Spelling already used |
 

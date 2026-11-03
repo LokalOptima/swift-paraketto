@@ -215,6 +215,26 @@ struct OutlinedField<Content: View>: View {
     }
 }
 
+/// The search box shared by the Transcripts and Dictionary tabs.
+struct SearchField: View {
+    let prompt: String
+    @Binding var text: String
+
+    var body: some View {
+        OutlinedField {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField(prompt, text: $text).textFieldStyle(.plain)
+                if !text.isEmpty {
+                    Button { text = "" } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.borderless).accessibilityLabel("Clear search")
+                }
+            }
+            .frame(height: 20)
+        }
+    }
+}
+
 private struct AliasChip: View {
     let text: String
     let isConflicting: Bool

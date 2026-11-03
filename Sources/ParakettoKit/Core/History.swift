@@ -218,7 +218,7 @@ final class HistoryStore: ObservableObject {
         try? updated.textFileContents.write(to: url, atomically: true, encoding: .utf8)
     }
 
-    private static let textFilenameFormatter: DateFormatter = {
+    private static let filenameFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
@@ -226,7 +226,7 @@ final class HistoryStore: ObservableObject {
     }()
 
     private func newTextFileURL(for entry: HistoryEntry) -> URL {
-        let stamp = Self.textFilenameFormatter.string(from: entry.date)
+        let stamp = Self.filenameFormatter.string(from: entry.date)
         var url = transcriptsDirectory.appendingPathComponent("\(stamp).txt")
         var copy = 1
         while FileManager.default.fileExists(atPath: url.path) {
@@ -267,6 +267,20 @@ final class HistoryStore: ObservableObject {
 
     func audioURL(for entry: HistoryEntry) -> URL {
         directory.appendingPathComponent("\(entry.id.uuidString).wav")
+    }
+
+    /// Named like the transcript's text file, so the two sort together.
+    func recordingFilename(for entry: HistoryEntry) -> String {
+        "\(Self.filenameFormatter.string(from: entry.date)).wav"
+    }
+
+    /// Off the main thread, as an imported recording can run to hundreds of MB. The write
+    /// is atomic and the recording is read first, so a failure leaves a file being replaced as it was.
+    func saveRecording(of entry: HistoryEntry, to destination: URL) async throws {
+        let recording = audioURL(for: entry)
+        try await Task.detached {
+            try Data(contentsOf: recording, options: .mappedIfSafe).write(to: destination, options: .atomic)
+        }.value
     }
 
     private func jsonURL(for entry: HistoryEntry) -> URL {

@@ -32,6 +32,10 @@ public enum ParakeetConstants {
     public static let maxSymbolsPerFrame = 10
     /// Shorter recordings are rejected: the model has nothing to decode and FluidAudio uses the same floor.
     public static let minimumSamples = sampleRate * 3 / 10
+
+    static func frames(covering samples: Int) -> Int {
+        (samples + samplesPerFrame - 1) / samplesPerFrame
+    }
 }
 
 /// The four Core ML models of FluidAudio's export plus our VAD head and the vocabulary.
@@ -94,10 +98,6 @@ struct Vocabulary {
             pieces[index] = piece
         }
         self.pieces = pieces
-    }
-
-    func isWordStart(_ token: Int) -> Bool {
-        token >= 0 && token < pieces.count && pieces[token].hasPrefix("▁")
     }
 
     func text(for tokens: [Int]) -> String {

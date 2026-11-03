@@ -158,7 +158,7 @@ def main():
         compute_units=ct.ComputeUnit.ALL,
     )
     mlmodel.short_description = "Parakeet Ultra voice-activity head (subsampler + VAD), one speech probability per 80 ms"
-    mlmodel.author = "Weights: moondream/parakeet-ultra (CC-BY-4.0). Export: paraketto-ultra tools/vad-export"
+    mlmodel.author = "Weights: moondream/parakeet-ultra (CC-BY-4.0). Export: swift-paraketto tools/export"
     mlmodel.save(str(args.out))
 
     predicted = mlmodel.predict({"mel": example.numpy()})["speech_probability"]

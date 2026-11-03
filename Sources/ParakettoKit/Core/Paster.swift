@@ -9,8 +9,15 @@ struct Destination: Equatable {
 
     @MainActor
     static var frontmost: Destination? {
-        guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
-        return Destination(name: app.localizedName ?? "Unknown app", bundleIdentifier: app.bundleIdentifier)
+        NSWorkspace.shared.frontmostApplication.flatMap(Destination.init(application:))
+    }
+}
+
+extension Destination {
+    /// Nil for this app: its windows are nowhere to paste, and Cmd+V would land in a search field.
+    init?(application: NSRunningApplication) {
+        guard application.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return nil }
+        self.init(name: application.localizedName ?? "Unknown app", bundleIdentifier: application.bundleIdentifier)
     }
 }
 

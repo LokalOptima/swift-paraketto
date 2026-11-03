@@ -11,9 +11,12 @@ Neural Engine with Core ML. Audio and transcripts stay on the Mac.
 - Shortcut: tap `Right ⌥` to start and stop a recording, `Esc` discards it. A tap is a press and release under 0.6 s with no other key in between, so Option+letter typing is unaffected. Click the shortcut beside the status in the menu, then tap another modifier key or press a key combination. The button shows a grey `…` with a blue outline while waiting, previews the keys you press, and marks invalid shortcuts red. A valid shortcut is saved, the outline briefly flashes green, then returns to grey. Esc or clicking away cancels an unfinished change and restores the previous shortcut
 - Transcription runs while you speak: every pause of 0.8 s ends a segment and it is transcribed right away, so when you pause before stopping the text is already there
 - Floating pill while recording: a level meter on a -65 to -25 dBFS scale with 30 ms attack / 160 ms release smoothing; brief peaks are retained between display updates. Errors in the pill are kept short; the details are in `~/Library/Logs/Paraketto.log`
-- Text is pasted only if the app that had focus when you started still has it; otherwise it is kept in history
-- **Transcripts** (right-click the menu-bar icon, or choose Transcripts in its menu): recordings grouped by day, with playback, copy, delete, and word count stats. Entries show up to four lines; hover to reveal actions and expand longer text
-- **Dictionary** (the other tab in the same window): explicit, case-sensitive replacements with multiple spellings per target. Select transcript text and right-click to add one; underlines show replacements. Changes update every stored transcript from its original
+- Text is pasted only if the app that had focus when you started still has it; otherwise it is kept in history. Dictating with Paraketto itself in front only copies the text
+- **Transcripts** (right-click the menu-bar icon, or choose Transcripts in its menu): the last 7 days of recordings grouped by day, with playback, copy, delete, and word count stats. Entries show up to four lines; hover to reveal actions and expand longer text
+- **Search** (top of Transcripts): finds text as shown in the last 7 days, ignoring case and accents, including stroked letters such as `ł` and `ø`. Matches are highlighted, and each entry and the footer count them. An entry whose matches would fall past its fourth line shows excerpts sampled across them instead, still within four lines; expanding it shows the whole transcript with every match highlighted. A new dictation or a dropped file clears the search so its transcript isn't hidden, and a search that hides the recording being played stops it
+- **Esc**: clears the search first, and cancels an import once the search is empty. During a dictation it discards the dictation, unless a text field holding text has focus, where it acts on that field
+- **Transcripts folder** (the button beside search): every transcript is also a plain text file in `~/Library/Application Support/Paraketto/transcripts/`, named by date and time and holding the text as shown. A transcript leaves the Transcripts view after 7 days, so search stays fast however many pile up. Its file stays and its recording is deleted. Deleting a transcript in the app also deletes its file
+- **Dictionary** (the other tab in the same window): explicit, case-sensitive replacements with multiple spellings per target. Select transcript text and right-click to add one; underlines show replacements. Changes update every transcript in the Transcripts view from its original
 - Drop an audio file onto Transcripts to transcribe it locally, including WAV, M4A and AAC files supported by macOS
 - Supports 25 European languages with automatic detection, punctuation, and capitalization
 - The model downloads on first use (about 613 MB); existing compatible FluidAudio caches are reused
@@ -100,7 +103,7 @@ whole preview, and other previews can stop selecting as well.
 | `MenuContent.swift` | Ready, Needs Accessibility, Needs Microphone, Shortcut in use, Downloading, Optimizing, Loading, Recording, Transcribing, Notice, Model failed |
 | `PillView.swift` | Recording (with a live meter), Transcribing, Copied, Kept in history, Error, All messages |
 | `ShortcutRecorder.swift` | All states, Interactive |
-| `TranscriptsView.swift` | Transcripts, Empty transcripts, Importing, Import failed, Importing with errors, Drop audio files, Drop while busy |
+| `TranscriptsView.swift` | Transcripts, Empty transcripts, Search, Search in a long transcript, Search without matches, Importing, Import failed, Importing with errors, Drop audio files, Drop while busy |
 | `DictionaryView.swift` | Dictionary, Empty dictionary |
 | `DictionaryEditor.swift` | Add replacement, Edit replacement, From a transcript, Adding to an existing target, Many spellings, Spelling already used |
 
@@ -115,12 +118,13 @@ file outside Xcode, close and reopen the project, or the canvas reports `Cannot 
 
 **Run** builds and launches the real `Paraketto.app` from Xcode’s build folder, with the debugger
 attached, its menu-bar icon and VAD model, and your real history, dictionary, and models. Quit
-any other running copy first, because both would answer the shortcut. The project signs with the
-`Paraketto Dev` certificate described under [Accessibility and rebuilds](#accessibility-and-rebuilds),
-so it has the same designated requirement as a `make bundle` build and keeps its Accessibility
-grant; Run needs that certificate. Xcode signs every build, including each canvas rebuild, so
-if a keychain dialog asks to let `codesign` use the key, choose **Always Allow**; **Allow** only
-covers that one build.
+any other running copy first, because both would answer the shortcut. The project signs ad-hoc, so
+anyone can build it. If the `Paraketto Dev` certificate described under
+[Accessibility and rebuilds](#accessibility-and-rebuilds) exists, the first Xcode build warns that it
+was signed ad-hoc and writes the untracked `Resources/Signing.local.xcconfig`, and later builds sign
+with the certificate. They have the same designated requirement as a `make bundle` build and keep the
+Accessibility grant. Xcode signs every build, including each canvas rebuild, so if a keychain dialog
+asks to let `codesign` use the key, choose **Always Allow**; **Allow** only covers that one build.
 
 The project is only a thin app target: `Sources/ParakettoLauncher/main.swift` links the
 `ParakettoKit` package library, and a final build phase runs `make xcode-bundle` to add the same
@@ -201,9 +205,11 @@ was intended as prose with a missing space.
 The existing history JSON `text` remains the immutable original recognition output, and WAV
 files are unchanged. Display text and replacement ranges are derived in memory from a single
 current dictionary snapshot. Every successful rule change synchronously reprocesses all
-transcripts from their originals, including on launch. Copy and new dictation delivery use
-the processed text; text already pasted into other apps is not changed. Removing or editing
-a rule is the way to undo replacements globally; there is no separate Show original control.
+transcripts in the Transcripts view from their originals, including on launch. Copy and new
+dictation delivery use the processed text; text already pasted into other apps is not changed.
+A transcript's text file follows the change while it is in the view, unless the file was edited,
+renamed or deleted since it was saved. Files of older transcripts stay as they are. Removing or
+editing a rule is the way to undo replacements globally; there is no separate Show original control.
 Rules live in `~/Library/Application Support/Paraketto/dictionary.json`.
 Dictionary changes are saved atomically before becoming active. A failed save leaves the
 previous rules active, and an unreadable dictionary is never silently overwritten.
@@ -366,5 +372,10 @@ contains optional model exporters and probes. Generated bundles, caches, local a
 build/test artifacts are ignored. The source icon lives in `Resources`; `tools/make_icon.swift`
 generates the app icon and template menu-bar image together.
 
-Transcripts and their recordings are stored under `~/Library/Application Support/Paraketto/history/`.
+Each transcript in the Transcripts view is a JSON file and a WAV recording under
+`~/Library/Application Support/Paraketto/history/`, plus its text file in `transcripts/` next to it.
+A file that can't be saved is tried again every hour and on each launch, and the entry stays in the
+view until it is saved. After 7 days the WAV is deleted for good and the JSON, which holds the
+original text, moves to `history/archive/`, so that loading doesn't slow down as transcripts pile up.
+Nothing reads or removes that folder.
 `~/Library/Logs/Paraketto.log` is truncated on each launch and never contains transcripts.

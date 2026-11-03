@@ -89,6 +89,14 @@ xcode-bundle: vad icons
 	mkdir -p "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)"
 	cp $(APP_ICON) .build/ParakettoMenu.png "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/"
 	cp -R $(VAD_COMPILED) "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/"
+ifneq ($(SIGN_IDENTITY),-)
+# Xcode signs ad-hoc until told otherwise, which would look fine but lose the Accessibility grant.
+# It signed this build already, so naming the certificate here takes effect on the next one.
+	@if [ "$(CODE_SIGN_IDENTITY)" = "-" ] && [ ! -f Resources/Signing.local.xcconfig ]; then \
+		echo 'CODE_SIGN_IDENTITY = $(SIGN_NAME)' > Resources/Signing.local.xcconfig; \
+		echo 'warning: This build is signed ad-hoc and will lose the Accessibility grant. Build again to sign with $(SIGN_NAME).'; \
+	fi
+endif
 
 # Explicitly download and prepare Ultra; bundle alone only prepares an installed model.
 prepare-models: bundle

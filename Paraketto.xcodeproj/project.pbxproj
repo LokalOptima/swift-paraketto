@@ -16,6 +16,7 @@
 		7C0000000000000000000006 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = main.swift; path = Sources/ParakettoLauncher/main.swift; sourceTree = SOURCE_ROOT; };
 		7C0000000000000000000014 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = Resources/Info.plist; sourceTree = SOURCE_ROOT; };
 		7C0000000000000000000015 /* Paraketto.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = Paraketto.entitlements; path = Resources/Paraketto.entitlements; sourceTree = SOURCE_ROOT; };
+		7C0000000000000000000017 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Signing.xcconfig; path = Resources/Signing.xcconfig; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -52,6 +53,7 @@
 				7C0000000000000000000006 /* main.swift */,
 				7C0000000000000000000014 /* Info.plist */,
 				7C0000000000000000000015 /* Paraketto.entitlements */,
+				7C0000000000000000000017 /* Signing.xcconfig */,
 			);
 			name = App;
 			sourceTree = "<group>";
@@ -179,9 +181,9 @@
 		};
 		7C0000000000000000000011 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7C0000000000000000000017 /* Signing.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Resources/Paraketto.entitlements;
-				CODE_SIGN_IDENTITY = "Paraketto Dev";
 				CODE_SIGN_STYLE = Manual;
 				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -195,9 +197,9 @@
 		};
 		7C0000000000000000000012 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7C0000000000000000000017 /* Signing.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Resources/Paraketto.entitlements;
-				CODE_SIGN_IDENTITY = "Paraketto Dev";
 				CODE_SIGN_STYLE = Manual;
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = Resources/Info.plist;

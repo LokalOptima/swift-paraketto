@@ -7,15 +7,65 @@ enum TranscriptDictionaryAction {
     case remove(UUID, String)
 }
 
+/// What layout says about a transcript at one width. It is worth keeping: SwiftUI asks far
+/// more often than this changes, and its cost grows with the length of the transcript.
+struct TranscriptLayout {
+    let text: NSAttributedString
+    let fullHeight: CGFloat
+    let collapsedHeight: CGFloat
+    let collapsed: (text: NSAttributedString, sourceLength: Int)
+
+    init(_ result: ReplacementResult, width: CGFloat) {
+        text = TranscriptText.attributed(result)
+        fullHeight = TranscriptText.height(text, width: width, lines: 0)
+        collapsedHeight = TranscriptText.height(text, width: width, lines: 4)
+        let collapsed = TranscriptText.collapsedPresentation(text, width: width)
+        self.collapsed = (collapsed.0, collapsed.1)
+    }
+}
+
+/// What a row shows of a transcript, and where each shown stretch sits in `ReplacementResult.text`.
+struct TranscriptPresentation {
+    struct Segment {
+        let shownLocation: Int
+        let source: NSRange
+    }
+
+    let text: NSAttributedString
+    let segments: [Segment]
+    let height: CGFloat
+
+    /// Nil when the range runs outside one stretch of the transcript, as across an inserted "…".
+    func sourceRange(ofShown shown: NSRange) -> NSRange? {
+        guard let segment = segments.first(where: {
+            shown.location >= $0.shownLocation && NSMaxRange(shown) <= $0.shownLocation + $0.source.length
+        }) else { return nil }
+        return NSRange(location: segment.source.location + shown.location - segment.shownLocation, length: shown.length)
+    }
+
+    /// Where `ranges` of the transcript appear, clipped to what is shown.
+    func shownRanges(of ranges: [NSRange]) -> [NSRange] {
+        segments.flatMap { segment in
+            ranges.compactMap { range in
+                let visible = NSIntersectionRange(range, segment.source)
+                guard visible.length > 0 else { return nil }
+                return NSRange(location: segment.shownLocation + visible.location - segment.source.location, length: visible.length)
+            }
+        }
+    }
+}
+
 /// Native selectable text exposes precise ranges for dictionary actions.
 struct TranscriptText: NSViewRepresentable {
     let result: ReplacementResult
     let expanded: Bool
+    let matches: [NSRange]
     @Binding var isTruncated: Bool
     let dictionaryAction: (TranscriptDictionaryAction, CGRect) -> Void
 
     func makeNSView(context: Context) -> DictionaryTextView {
-        let view = DictionaryTextView(frame: .zero)
+        // Search highlights are temporary layout attributes, which only TextKit 1 has.
+        let view = DictionaryTextView(usingTextLayoutManager: false)
         view.isEditable = false
         view.isSelectable = true
         view.isRichText = true
@@ -31,37 +81,62 @@ struct TranscriptText: NSViewRepresentable {
     }
 
     func updateNSView(_ view: DictionaryTextView, context: Context) {
-        view.result = result
         view.dictionaryAction = dictionaryAction
-        configure(view, width: max(1, view.bounds.width))
+        // Before the first layout there is no width to wrap to. sizeThatFits configures the view then.
+        guard view.bounds.width > 0 else { return }
+        configure(view, width: view.bounds.width)
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView view: DictionaryTextView, context: Context) -> CGSize? {
         guard let width = proposal.width, width.isFinite, width > 0 else { return nil }
-        let attributed = Self.attributed(result)
-        let full = Self.height(attributed, width: width, lines: 0)
-        let collapsed = Self.height(attributed, width: width, lines: 4)
-        let truncated = full > collapsed + 0.5
-        configure(view, width: width)
+        let layout = view.layout(of: result, width: width)
+        let truncated = layout.fullHeight > layout.collapsedHeight + 0.5
+        let shown = configure(view, width: width)
         view.measurementVersion += 1
         let version = view.measurementVersion
         DispatchQueue.main.async { [weak view] in
             guard view?.measurementVersion == version else { return }
             if isTruncated != truncated { isTruncated = truncated }
         }
-        return CGSize(width: width, height: expanded ? full : collapsed)
+        return CGSize(width: width, height: shown.height)
     }
 
-    private func configure(_ view: DictionaryTextView, width: CGFloat) {
-        let full = Self.attributed(result)
-        let presentation = expanded ? (full, full.length) : Self.collapsedPresentation(full, width: width)
-        view.selectableSourceLength = presentation.1
-        if view.textStorage?.isEqual(to: presentation.0) != true {
-            view.textStorage?.setAttributedString(presentation.0)
-            view.setSelectedRange(NSRange(location: 0, length: 0))
-        }
+    @discardableResult
+    private func configure(_ view: DictionaryTextView, width: CGFloat) -> TranscriptPresentation {
+        let shown = Self.presentation(of: view.layout(of: result, width: width), matches: matches, expanded: expanded, width: width)
+        view.result = result
+        view.show(shown, highlighting: matches)
         view.textContainer?.maximumNumberOfLines = expanded ? 0 : 4
         view.textContainer?.lineBreakMode = .byTruncatingTail
+        return shown
+    }
+
+    /// Everything, the first four lines, or excerpts when those lines would hide a search match.
+    static func presentation(of layout: TranscriptLayout, matches: [NSRange], expanded: Bool, width: CGFloat) -> TranscriptPresentation {
+        guard !expanded else {
+            return TranscriptPresentation(text: layout.text, segments: [.init(shownLocation: 0, source: NSRange(location: 0, length: layout.text.length))],
+                                          height: layout.fullHeight)
+        }
+        let visible = layout.collapsed.sourceLength
+        guard let last = matches.last, NSMaxRange(last) > visible else {
+            return TranscriptPresentation(text: layout.collapsed.text, segments: [.init(shownLocation: 0, source: NSRange(location: 0, length: visible))],
+                                          height: layout.collapsedHeight)
+        }
+        // A little under what the first four lines hold, as inserted separators can end a line early.
+        let stretches = TextSearch.excerpt(of: layout.text.string, around: matches, capacity: visible * 9 / 10)
+        let text = NSMutableAttributedString()
+        let marker = { (string: String) in
+            NSAttributedString(string: string, attributes: [.font: NSFont.systemFont(ofSize: NSFont.systemFontSize),
+                                                            .foregroundColor: NSColor.secondaryLabelColor])
+        }
+        var segments: [TranscriptPresentation.Segment] = []
+        for (index, stretch) in stretches.enumerated() {
+            if index > 0 { text.append(marker(" … ")) } else if stretch.location > 0 { text.append(marker("… ")) }
+            segments.append(.init(shownLocation: text.length, source: stretch))
+            text.append(layout.text.attributedSubstring(from: stretch))
+        }
+        if let end = stretches.last.map(NSMaxRange), end < layout.text.length { text.append(marker(" …")) }
+        return TranscriptPresentation(text: text, segments: segments, height: height(text, width: width, lines: 4))
     }
 
     /// TextKit does not draw an ellipsis when the next paragraph is outside the line cap.
@@ -124,7 +199,42 @@ final class DictionaryTextView: NSTextView {
     var result = ReplacementResult(original: "", text: "", replacements: [])
     var dictionaryAction: ((TranscriptDictionaryAction, CGRect) -> Void)?
     var measurementVersion = 0
-    var selectableSourceLength = Int.max
+    /// Maps what is shown back to `result`. Without one, the shown text is the transcript itself.
+    private(set) var presentation: TranscriptPresentation?
+    private var layouts: (result: ReplacementResult, byWidth: [CGFloat: TranscriptLayout])?
+    private var shownHighlights: [NSRange] = []
+
+    func layout(of result: ReplacementResult, width: CGFloat) -> TranscriptLayout {
+        if layouts?.result != result { layouts = (result, [:]) }
+        if let cached = layouts?.byWidth[width] { return cached }
+        let layout = TranscriptLayout(result, width: width)
+        layouts?.byWidth[width] = layout
+        return layout
+    }
+
+    /// Highlights are drawn over the text rather than stored in it, so Copy doesn't carry them,
+    /// layout doesn't slow down with them, and a new search keeps the selection.
+    func show(_ shown: TranscriptPresentation, highlighting matches: [NSRange]) {
+        presentation = shown
+        let textChanged = textStorage?.isEqual(to: shown.text) != true
+        if textChanged {
+            textStorage?.setAttributedString(shown.text)
+            setSelectedRange(NSRange(location: 0, length: 0))
+        }
+        let highlights = shown.shownRanges(of: matches)
+        guard textChanged || highlights != shownHighlights, let layoutManager else { return }
+        let everything = NSRange(location: 0, length: shown.text.length)
+        layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: everything)
+        layoutManager.removeTemporaryAttribute(.foregroundColor, forCharacterRange: everything)
+        // Black on the yellow find color stays readable in both light and dark appearance.
+        let highlight: [NSAttributedString.Key: Any] = [.backgroundColor: NSColor.findHighlightColor, .foregroundColor: NSColor.black]
+        for range in highlights { layoutManager.addTemporaryAttributes(highlight, forCharacterRange: range) }
+        shownHighlights = highlights
+    }
+
+    private func sourceRange(ofShown range: NSRange) -> NSRange? {
+        presentation.map { $0.sourceRange(ofShown: range) } ?? range
+    }
 
     override func menu(for event: NSEvent) -> NSMenu? {
         guard let layoutManager, let textContainer else { return nil }
@@ -155,13 +265,13 @@ final class DictionaryTextView: NSTextView {
         copy.isEnabled = selectedRange().length > 0
         menu.addItem(copy)
         menu.addItem(.separator())
-        let source = NSMaxRange(selectedRange()) <= selectableSourceLength ? result.originalSelection(selectedRange()) : nil
+        let source = sourceRange(ofShown: selectedRange()).flatMap(result.originalSelection)
         let add = item("Add to dictionary…", action: source.map(TranscriptDictionaryAction.add))
         add.isEnabled = source?.isEmpty == false
         if !add.isEnabled { add.toolTip = "Select original text or a complete replacement." }
         menu.addItem(add)
-        if let index = clickedIndex,
-           let replacement = result.replacements.first(where: { NSLocationInRange(index, $0.outputRange) }) {
+        if let index = clickedIndex, let clicked = sourceRange(ofShown: NSRange(location: index, length: 1)),
+           let replacement = result.replacements.first(where: { NSLocationInRange(clicked.location, $0.outputRange) }) {
             menu.addItem(.separator())
             menu.addItem(item("Edit replacement…", action: .edit(replacement.ruleID)))
             menu.addItem(item("Remove this spelling", action: .remove(replacement.ruleID, replacement.alias)))

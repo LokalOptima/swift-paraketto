@@ -2,6 +2,14 @@ import AppKit
 import Combine
 import Foundation
 
+/// What the pill's meter shows. Separate from the controller because it publishes 20 times a
+/// second while recording, which must not re-render every view that observes the controller.
+@MainActor
+final class RecordingMeter: ObservableObject {
+    @Published fileprivate(set) var level: Float = 0
+    @Published fileprivate(set) var elapsed: TimeInterval = 0
+}
+
 /// Owns the record → transcribe → paste loop and exposes state for the menu bar, overlay and history.
 @MainActor
 final class DictationController: ObservableObject {
@@ -56,8 +64,7 @@ final class DictationController: ObservableObject {
     }
     /// Set for Xcode's canvas, which must not write to the user's log or load models.
     private var isPreview = false
-    @Published private(set) var inputLevel: Float = 0
-    @Published private(set) var elapsed: TimeInterval = 0
+    let meter = RecordingMeter()
     @Published private(set) var destination: Destination?
     @Published private(set) var modelError: String?
     @Published private(set) var isLoadingModel = true
@@ -395,21 +402,22 @@ final class DictationController: ObservableObject {
     /// Watches for Escape and starts the meter/elapsed ticker for the duration of a dictation.
     private func startSession() {
         recordingStarted = Date()
-        elapsed = 0
+        meter.elapsed = 0
         smoother.reset()
-        inputLevel = 0
+        meter.level = 0
         // Passive monitors rather than a Carbon hotkey: registering a hotkey while ⌃⌥Space is
         // physically held makes Carbon drop that key's release event, which left recordings stuck.
-        // The global monitor needs Accessibility and misses this app's own windows, hence the local one.
-        let cancelOnEscape: (NSEvent) -> Void = { [weak self] event in
-            guard event.keyCode == 53 else { return }
-            Task { @MainActor in self?.cancel() }
-        }
+        // The global monitor needs Accessibility and misses this app's own windows, hence the local
+        // one, which consumes the key so that one press never also acts on the window.
         escapeMonitors = [
-            NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: cancelOnEscape),
-            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-                cancelOnEscape(event)
-                return event
+            NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard event.keyCode == 53 else { return }
+                Task { @MainActor in self?.cancel() }
+            },
+            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard event.keyCode == 53, !Self.escapeBelongsToField(event.window?.firstResponder) else { return event }
+                Task { @MainActor in self?.cancel() }
+                return nil
             },
         ].compactMap { $0 }
         meterTask = Task { [weak self] in
@@ -418,11 +426,17 @@ final class DictationController: ObservableObject {
                 guard let self, !Task.isCancelled else { return }
                 if self.state == .recording {
                     self.smoother.tick(interval: 0.05)
-                    self.inputLevel = self.smoother.level
-                    self.elapsed = Date().timeIntervalSince(self.recordingStarted)
+                    self.meter.level = self.smoother.level
+                    self.meter.elapsed = Date().timeIntervalSince(self.recordingStarted)
                 }
             }
         }
+    }
+
+    /// Esc in a text field holding text is about that text, such as clearing a search, not about the dictation.
+    static func escapeBelongsToField(_ responder: NSResponder?) -> Bool {
+        guard let editor = responder as? NSTextView else { return false }
+        return editor.isFieldEditor && !editor.string.isEmpty
     }
 
     private func finishSession() {
@@ -464,8 +478,8 @@ extension DictationController {
     }
 
     func showPreviewMeter(level: Float, elapsed: TimeInterval) {
-        inputLevel = level
-        self.elapsed = elapsed
+        meter.level = level
+        meter.elapsed = elapsed
     }
 }
 #endif

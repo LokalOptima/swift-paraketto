@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Past dictations grouped by day, with playback, copy and delete per entry.
+/// The last week's dictations grouped by day, with search, the folder of all transcripts, and playback, copy and delete per entry.
 struct TranscriptsView: View {
     let removeAlias: (String, UUID) -> Void
     @ObservedObject var controller: DictationController
@@ -9,26 +9,61 @@ struct TranscriptsView: View {
     @ObservedObject var shortcuts: ShortcutSettings
     @StateObject private var player = AudioPlayer()
     @State private var isDropTargeted = false
+    @State private var query: String
+    /// Kept here rather than on the rows, so an expanded row stays expanded when a search hides it for a moment.
+    @State private var expandedEntries: Set<UUID> = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
 
-    init(controller: DictationController, removeAlias: @escaping (String, UUID) -> Void) {
+    private static let listTop = "listTop"
+
+    init(controller: DictationController, removeAlias: @escaping (String, UUID) -> Void, query: String = "") {
         self.removeAlias = removeAlias
         self.controller = controller
         store = controller.history
         shortcuts = controller.shortcuts
+        _query = State(initialValue: query)
     }
 
-    private var sections: [(day: Date, title: String, entries: [HistoryEntry])] {
+    private var searchText: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    /// One pass over the history per update: the filter, the counts and each row's highlights all come from it.
+    private var searchResults: (entries: [HistoryEntry], matches: [UUID: [NSRange]]) {
+        let query = searchText
+        guard !query.isEmpty else { return (store.entries, [:]) }
+        var matches: [UUID: [NSRange]] = [:]
+        let entries = store.entries.filter { entry in
+            let found = TextSearch.matches(of: query, in: entry.displayText)
+            if !found.isEmpty { matches[entry.id] = found }
+            return !found.isEmpty
+        }
+        return (entries, matches)
+    }
+
+    private func sections(of entries: [HistoryEntry]) -> [(day: Date, title: String, entries: [HistoryEntry])] {
         let calendar = Calendar.current
-        let grouped = Dictionary(grouping: store.entries) { calendar.startOfDay(for: $0.date) }
+        let grouped = Dictionary(grouping: entries) { calendar.startOfDay(for: $0.date) }
         return grouped.keys.sorted(by: >).map { day in
             (day: day, title: Self.dayTitle(day, calendar: calendar), entries: grouped[day] ?? [])
         }
     }
 
     var body: some View {
+        let results = searchResults
         VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                SearchField(prompt: "Search the last \(HistoryStore.retentionDays) days", text: $query)
+                    // While focused, the field would take a dropped file for itself and insert its path.
+                    .disabled(isDropTargeted)
+                Button { openTranscriptsFolder() } label: {
+                    Image(systemName: "folder").frame(width: 16, height: 16)
+                }
+                .buttonStyle(.bordered)
+                .help("Open the folder with all transcripts").accessibilityLabel("Open the folder with all transcripts")
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            Divider()
             if let job = controller.fileImport {
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 6) {
@@ -56,43 +91,57 @@ struct TranscriptsView: View {
             }
             if store.entries.isEmpty {
                 ContentUnavailableView(
-                    "No transcripts yet",
+                    "No recent transcripts",
                     systemImage: "mic",
-                    description: Text("Start and stop with \(shortcuts.shortcut.label).")
+                    description: Text("Start and stop with \(shortcuts.shortcut.label). Older transcripts are in the transcripts folder.")
                 )
                 .frame(maxHeight: .infinity)
+            } else if results.entries.isEmpty {
+                ContentUnavailableView {
+                    Label("No results for “\(searchText)”", systemImage: "magnifyingglass")
+                } description: {
+                    Text("Search covers the last \(HistoryStore.retentionDays) days. Older transcripts are in the transcripts folder.")
+                }
+                .frame(maxHeight: .infinity)
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                        ForEach(sections, id: \.day) { section in
-                            Section {
-                                ForEach(section.entries) { entry in
-                                    TranscriptRow(entry: entry, store: store, player: player, dictionary: controller.dictionary, removeAlias: removeAlias)
-                                        .padding(.horizontal, 16)
-                                    if entry.id != section.entries.last?.id {
-                                        separator.padding(.horizontal, 16)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                            Color.clear.frame(height: 0).id(Self.listTop)
+                            ForEach(sections(of: results.entries), id: \.day) { section in
+                                Section {
+                                    ForEach(section.entries) { entry in
+                                        TranscriptRow(entry: entry, store: store, player: player, dictionary: controller.dictionary,
+                                                      removeAlias: removeAlias, matches: results.matches[entry.id] ?? [],
+                                                      expanded: isExpanded(entry))
+                                            .padding(.horizontal, 16)
+                                        if entry.id != section.entries.last?.id {
+                                            separator.padding(.horizontal, 16)
+                                        }
                                     }
+                                } header: {
+                                    VStack(alignment: .leading, spacing: 0) {
+                                        Text(section.title)
+                                            .font(.callout.weight(.semibold))
+                                            .foregroundStyle(Color(nsColor: .systemTeal))
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 8)
+                                        separator
+                                    }
+                                    .background(Color(nsColor: .textBackgroundColor))
                                 }
-                            } header: {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    Text(section.title)
-                                        .font(.callout.weight(.semibold))
-                                        .foregroundStyle(Color(nsColor: .systemTeal))
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 8)
-                                    separator
-                                }
-                                .background(Color(nsColor: .textBackgroundColor))
                             }
                         }
                     }
+                    // Transparent title bars must not reveal scroll content outside this viewport.
+                    .clipped()
+                    // Results would otherwise appear at the old scroll position.
+                    .onChange(of: searchText) { proxy.scrollTo(Self.listTop, anchor: .top) }
                 }
-                // Transparent title bars must not reveal scroll content outside this viewport.
-                .clipped()
             }
             Divider()
-            footer
+            footer(results)
         }
         .frame(minWidth: 460, minHeight: 320)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -108,21 +157,59 @@ struct TranscriptsView: View {
         .animation(.easeOut(duration: reduceMotion ? 0 : 0.16), value: isDropTargeted)
         .dropDestination(for: URL.self) { urls, _ in
             let accepted = controller.importFiles(urls)
-            if accepted { player.stop() }
+            if accepted {
+                player.stop()
+                // What comes out of the file may not match a search left in the box.
+                query = ""
+            }
             return accepted
         } isTargeted: { isDropTargeted = $0 }
-        .onExitCommand { if controller.fileImport != nil { controller.cancelFileImport() } }
+        .onExitCommand {
+            // Clearing the search comes first, as it is the one that loses nothing.
+            if !query.isEmpty { query = "" } else if controller.fileImport != nil { controller.cancelFileImport() }
+        }
+        .onChange(of: results.entries.map(\.id)) { _, visible in
+            // The Stop control is on the row, so audio must not outlive a row that a search hides or a week removes.
+            if let playing = player.playingID, !visible.contains(playing) { player.stop() }
+        }
+        .onChange(of: store.entries.count) { old, new in
+            // A new dictation may not match a search left in the box. Imports clear it when
+            // dropped instead, so that a search started while they run isn't lost with each file.
+            if new > old, controller.fileImport == nil { query = "" }
+        }
+    }
+
+    private func openTranscriptsFolder() {
+        // Nothing may have been saved yet, or the folder may have been removed.
+        try? FileManager.default.createDirectory(at: store.transcriptsDirectory, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(store.transcriptsDirectory)
     }
 
     private var separator: some View {
         Color(nsColor: .separatorColor).frame(height: 1 / displayScale)
     }
 
-    private var footer: some View {
+    private func isExpanded(_ entry: HistoryEntry) -> Binding<Bool> {
+        Binding {
+            expandedEntries.contains(entry.id)
+        } set: { isExpanded in
+            if isExpanded { expandedEntries.insert(entry.id) } else { expandedEntries.remove(entry.id) }
+        }
+    }
+
+    private func footer(_ results: (entries: [HistoryEntry], matches: [UUID: [NSRange]])) -> some View {
         HStack {
-            Text("\(store.entries.count) transcripts")
-            Text("·").foregroundStyle(.tertiary)
-            Text("\(store.totalWords) words")
+            if searchText.isEmpty {
+                Text("Last \(HistoryStore.retentionDays) days")
+                Text("·").foregroundStyle(.tertiary)
+                Text("^[\(store.entries.count) transcript](inflect: true)")
+                Text("·").foregroundStyle(.tertiary)
+                Text("^[\(store.totalWords) word](inflect: true)")
+            } else {
+                Text("\(results.entries.count) of ^[\(store.entries.count) transcript](inflect: true)")
+                Text("·").foregroundStyle(.tertiary)
+                Text("^[\(results.matches.values.reduce(0) { $0 + $1.count }) match](inflect: true)")
+            }
             Spacer()
             Text("Start and stop: \(shortcuts.shortcut.label)")
         }
@@ -170,6 +257,18 @@ struct AudioFileDropOverlay: View {
 
 #Preview("Empty transcripts") {
     LibraryPreview(empty: true)
+}
+
+#Preview("Search") {
+    TranscriptSearchPreview(query: "the")
+}
+
+#Preview("Search in a long transcript") {
+    TranscriptSearchPreview(query: "budget")
+}
+
+#Preview("Search without matches") {
+    TranscriptSearchPreview(query: "zebra")
 }
 
 #Preview("Importing") {

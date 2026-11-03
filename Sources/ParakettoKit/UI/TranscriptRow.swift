@@ -7,9 +7,11 @@ struct TranscriptRow: View {
     @ObservedObject var player: AudioPlayer
     let dictionary: DictionaryStore
     let removeAlias: (String, UUID) -> Void
+    /// Where the active search matches this transcript.
+    let matches: [NSRange]
+    @Binding var expanded: Bool
     @State private var draft: DictionaryDraft?
     @State private var draftAnchor = CGRect.zero
-    @State private var expanded = false
     @State private var isTruncated = false
     @State private var isHovered = false
     @State private var copied = false
@@ -26,7 +28,7 @@ struct TranscriptRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top) {
-                TranscriptText(result: entry.processed, expanded: expanded,
+                TranscriptText(result: entry.processed, expanded: expanded, matches: matches,
                                isTruncated: $isTruncated, dictionaryAction: handle)
                     .popover(item: $draft, attachmentAnchor: .rect(.rect(draftAnchor)), arrowEdge: .bottom) {
                         DictionaryEditor(store: dictionary, draft: $0)
@@ -60,6 +62,10 @@ struct TranscriptRow: View {
                 if entry.delivery == .copied || entry.delivery == .keptInHistory {
                     Text("·")
                     Text(entry.delivery == .copied ? "copied" : "not pasted")
+                }
+                if !matches.isEmpty {
+                    Text("·")
+                    Text("^[\(matches.count) match](inflect: true)")
                 }
                 Spacer()
                 actions

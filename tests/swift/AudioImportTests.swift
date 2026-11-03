@@ -52,14 +52,15 @@ final class AudioImportTests: XCTestCase {
     func testImportedHistoryPersistsAndOldEntriesStillDecode() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let store = HistoryStore(directory: root)
+        let store = HistoryStore(directory: root.appendingPathComponent("history"))
         let recording = try RecordingFile()
         try recording.append([Float](repeating: 0, count: 16_000))
         let entry = HistoryEntry(id: UUID(), date: Date(), text: "Imported transcript", destination: "",
                                  duration: 1, inferenceMilliseconds: 10, delivery: .imported,
                                  sourceFilename: "Meeting.m4a")
         try store.add(entry, recording: recording)
-        XCTAssertEqual(HistoryStore(directory: root).entries, [entry])
+        XCTAssertEqual(HistoryStore(directory: store.directory).entries, store.entries)
+        XCTAssertEqual(store.entries.map(\.id), [entry.id])
         XCTAssertTrue(FileManager.default.fileExists(atPath: store.audioURL(for: entry).path))
         var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(entry)) as? [String: Any])
         legacy.removeValue(forKey: "sourceFilename")

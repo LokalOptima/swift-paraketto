@@ -1,0 +1,4 @@
+// Ad-hoc by default, so anyone can build the project. An untracked Signing.local.xcconfig can name a
+// certificate instead: see "Accessibility and rebuilds" in docs/internals.md.
+CODE_SIGN_IDENTITY = -
+#include? "Signing.local.xcconfig"

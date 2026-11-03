@@ -108,12 +108,13 @@ file outside Xcode, close and reopen the project, or the canvas reports `Cannot 
 
 **Run** builds and launches the real `Paraketto.app` from Xcode’s build folder, with the debugger
 attached, its menu-bar icon and VAD model, and your real history, dictionary, and models. Quit
-any other running copy first, because both would answer the shortcut. The project signs with the
-`Paraketto Dev` certificate described under [Accessibility and rebuilds](#accessibility-and-rebuilds),
-so it has the same designated requirement as a `make bundle` build and keeps its Accessibility
-grant; Run needs that certificate. Xcode signs every build, including each canvas rebuild, so
-if a keychain dialog asks to let `codesign` use the key, choose **Always Allow**; **Allow** only
-covers that one build.
+any other running copy first, because both would answer the shortcut. The project signs ad-hoc, so
+anyone can build it. If the `Paraketto Dev` certificate described under
+[Accessibility and rebuilds](#accessibility-and-rebuilds) exists, the first Xcode build warns that it
+was signed ad-hoc and writes the untracked `Resources/Signing.local.xcconfig`, and later builds sign
+with the certificate. They have the same designated requirement as a `make bundle` build and keep the
+Accessibility grant. Xcode signs every build, including each canvas rebuild, so if a keychain dialog
+asks to let `codesign` use the key, choose **Always Allow**; **Allow** only covers that one build.
 
 The project is only a thin app target: `Sources/ParakettoLauncher/main.swift` links the
 `ParakettoKit` package library, and a final build phase runs `make xcode-bundle` to add the same

@@ -10,7 +10,7 @@ Menu-bar dictation app for macOS: Parakeet Ultra on Core ML, with a SwiftUI and 
 - `make bundle`, `make run`: also replace `/Applications/Paraketto.app`
 - `make trust`: re-grant Accessibility after an ad-hoc signed rebuild
 
-`make bundle`, `make run` and Xcode builds sign with the user's key, which can block on a keychain dialog on their screen. To check that code compiles, use `swift build`.
+When the user's certificate exists, `make bundle`, `make run` and Xcode builds sign with it, which can block on a keychain dialog on their screen. To check that code compiles, use `swift build`.
 
 Tests, `paraketto-cli`, benchmarks and model exporters live on the `dev-tools` branch, which is `master` plus those files. To use them, run `git switch dev-tools && git merge master`. Never merge `dev-tools` into `master`.
 

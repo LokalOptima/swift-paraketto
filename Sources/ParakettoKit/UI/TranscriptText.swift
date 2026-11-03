@@ -19,8 +19,7 @@ struct TranscriptLayout {
         text = TranscriptText.attributed(result)
         fullHeight = TranscriptText.height(text, width: width, lines: 0)
         collapsedHeight = TranscriptText.height(text, width: width, lines: 4)
-        let collapsed = TranscriptText.collapsedPresentation(text, width: width)
-        self.collapsed = (collapsed.0, collapsed.1)
+        collapsed = TranscriptText.collapsedPresentation(text, width: width)
     }
 }
 
@@ -141,32 +140,25 @@ struct TranscriptText: NSViewRepresentable {
 
     /// TextKit does not draw an ellipsis when the next paragraph is outside the line cap.
     /// Append one explicitly in that case, keeping all visible source offsets unchanged.
-    static func collapsedPresentation(_ text: NSAttributedString, width: CGFloat) -> (NSAttributedString, Int) {
-        let storage = NSTextStorage(attributedString: text)
-        let layout = NSLayoutManager()
-        let container = NSTextContainer(containerSize: CGSize(width: width, height: .greatestFiniteMagnitude))
-        container.lineFragmentPadding = 0
-        container.maximumNumberOfLines = 4
-        container.lineBreakMode = .byTruncatingTail
-        layout.addTextContainer(container)
-        storage.addLayoutManager(layout)
-        layout.ensureLayout(for: container)
-        let glyphs = layout.glyphRange(for: container)
-        guard glyphs.length > 0 else { return (text, 0) }
-        let truncated = layout.truncatedGlyphRange(inLineFragmentForGlyphAt: NSMaxRange(glyphs) - 1)
-        if truncated.location != NSNotFound {
-            return (text, layout.characterIndexForGlyph(at: truncated.location))
+    static func collapsedPresentation(_ text: NSAttributedString, width: CGFloat) -> (text: NSAttributedString, sourceLength: Int) {
+        withLayout(of: text, width: width, lines: 4) { layout, container in
+            let glyphs = layout.glyphRange(for: container)
+            guard glyphs.length > 0 else { return (text, 0) }
+            let truncated = layout.truncatedGlyphRange(inLineFragmentForGlyphAt: NSMaxRange(glyphs) - 1)
+            if truncated.location != NSNotFound {
+                return (text, layout.characterIndexForGlyph(at: truncated.location))
+            }
+            let characters = layout.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+            guard NSMaxRange(characters) < text.length else { return (text, text.length) }
+            var end = NSMaxRange(characters)
+            let string = text.string as NSString
+            if end > 0, string.character(at: end - 1) == 10 { end -= 1 }
+            if end > 0, string.character(at: end - 1) == 13 { end -= 1 }
+            let preview = NSMutableAttributedString(attributedString: text.attributedSubstring(from: NSRange(location: 0, length: end)))
+            preview.append(NSAttributedString(string: "…", attributes: [.font: NSFont.systemFont(ofSize: NSFont.systemFontSize),
+                                                                      .foregroundColor: NSColor.labelColor]))
+            return (preview, end)
         }
-        let characters = layout.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
-        guard NSMaxRange(characters) < text.length else { return (text, text.length) }
-        var end = NSMaxRange(characters)
-        let string = text.string as NSString
-        if end > 0, string.character(at: end - 1) == 10 { end -= 1 }
-        if end > 0, string.character(at: end - 1) == 13 { end -= 1 }
-        let preview = NSMutableAttributedString(attributedString: text.attributedSubstring(from: NSRange(location: 0, length: end)))
-        preview.append(NSAttributedString(string: "…", attributes: [.font: NSFont.systemFont(ofSize: NSFont.systemFontSize),
-                                                                  .foregroundColor: NSColor.labelColor]))
-        return (preview, end)
     }
 
     static func attributed(_ result: ReplacementResult) -> NSAttributedString {
@@ -182,6 +174,14 @@ struct TranscriptText: NSViewRepresentable {
     }
 
     static func height(_ text: NSAttributedString, width: CGFloat, lines: Int) -> CGFloat {
+        withLayout(of: text, width: width, lines: lines) { layout, container in
+            ceil(max(layout.usedRect(for: container).height, NSFont.systemFontSize + 3))
+        }
+    }
+
+    /// A layout manager doesn't keep its text storage alive, so the storage has to outlive `body`.
+    private static func withLayout<Result>(of text: NSAttributedString, width: CGFloat, lines: Int,
+                                           _ body: (NSLayoutManager, NSTextContainer) -> Result) -> Result {
         let storage = NSTextStorage(attributedString: text)
         let layout = NSLayoutManager()
         let container = NSTextContainer(containerSize: CGSize(width: width, height: .greatestFiniteMagnitude))
@@ -191,7 +191,7 @@ struct TranscriptText: NSViewRepresentable {
         layout.addTextContainer(container)
         storage.addLayoutManager(layout)
         layout.ensureLayout(for: container)
-        return ceil(max(layout.usedRect(for: container).height, NSFont.systemFontSize + 3))
+        return withExtendedLifetime(storage) { body(layout, container) }
     }
 }
 

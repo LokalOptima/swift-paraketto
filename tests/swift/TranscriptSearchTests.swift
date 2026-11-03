@@ -4,6 +4,20 @@ import XCTest
 
 @MainActor
 final class TranscriptSearchTests: XCTestCase {
+    func testASingleCharacterIsNotSearchedFor() {
+        XCTAssertEqual(TextSearch.term(in: ""), "")
+        XCTAssertEqual(TextSearch.term(in: "a"), "")
+        XCTAssertEqual(TextSearch.term(in: "  a \n"), "")
+        XCTAssertEqual(TextSearch.term(in: "é"), "")
+        XCTAssertEqual(TextSearch.term(in: "e\u{301}"), "", "A base letter and its accent are one character")
+    }
+
+    func testSearchStartsAtTwoCharacters() {
+        XCTAssertEqual(TextSearch.term(in: "ab"), "ab")
+        XCTAssertEqual(TextSearch.term(in: "  ab \n"), "ab")
+        XCTAssertEqual(TextSearch.term(in: "a b"), "a b")
+    }
+
     func testMatchesIgnoreCaseAndAccents() {
         let matches = TextSearch.matches(of: "cafe", in: "Café, CAFE and cafeteria")
         XCTAssertEqual(matches.map(\.location), [0, 6, 15])

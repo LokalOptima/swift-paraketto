@@ -223,9 +223,10 @@ with no package dependencies:
 | `EncoderSet.swift` | picks the shortest encoder window that holds a segment |
 | `MultiArray.swift` | small `MLMultiArray` helpers |
 
-The Ultra model files are FluidAudio's Core ML conversion (Apache 2.0) of moondream's checkpoint
-(CC-BY-4.0): a fixed 15 s preprocessor and int8 encoder, an LSTM decoder, and a joint network
-that returns token, probability and duration bin directly.
+The Ultra model files are FluidInference's Core ML conversion of moondream's checkpoint, which is
+based on NVIDIA's Parakeet TDT 0.6B v3 (all CC-BY-4.0, see [NOTICE](../NOTICE)): a fixed 15 s
+preprocessor and int8 encoder, an LSTM decoder, and a joint network that returns token, probability
+and duration bin directly.
 
 ### Voice-activity head
 

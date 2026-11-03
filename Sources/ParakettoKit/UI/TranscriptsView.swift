@@ -24,7 +24,7 @@ struct TranscriptsView: View {
         _query = State(initialValue: query)
     }
 
-    private var searchText: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var searchText: String { TextSearch.term(in: query) }
 
     /// One pass over the history per update: the filter, the counts and each row's highlights all come from it.
     private var searchResults: (entries: [HistoryEntry], matches: [UUID: [NSRange]]) {

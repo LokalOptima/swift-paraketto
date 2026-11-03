@@ -411,11 +411,11 @@ final class DictationController: ObservableObject {
         // one, which consumes the key so that one press never also acts on the window.
         escapeMonitors = [
             NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard event.keyCode == 53 else { return }
+                guard event.isEscape else { return }
                 Task { @MainActor in self?.cancel() }
             },
             NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard event.keyCode == 53, !Self.escapeBelongsToField(event.window?.firstResponder) else { return event }
+                guard event.isEscape, !Self.escapeBelongsToField(event.window?.firstResponder) else { return event }
                 Task { @MainActor in self?.cancel() }
                 return nil
             },

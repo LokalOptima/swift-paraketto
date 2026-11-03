@@ -3,6 +3,10 @@ import Carbon.HIToolbox
 import Combine
 import Foundation
 
+extension NSEvent {
+    var isEscape: Bool { Int(keyCode) == kVK_Escape }
+}
+
 /// A modifier key that can be tapped on its own to start and stop dictation.
 enum ModifierKey: String, CaseIterable, Codable {
     case rightOption, leftOption

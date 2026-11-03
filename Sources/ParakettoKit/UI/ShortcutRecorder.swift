@@ -67,7 +67,7 @@ struct ShortcutRecorder: View {
             capturedLabel = Chord.label(for: event)
             heldKey = event
             pendingModifier = nil
-            if event.keyCode == 53, event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty {
+            if event.isEscape, event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty {
                 stop()
             } else if let chord = Chord.from(event) {
                 save(.chord(chord))

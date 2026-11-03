@@ -71,8 +71,8 @@ own model on first use. The bundle contains no personal recordings or transcript
 signing is not Developer ID signing or Apple notarization, so another Mac may require an
 [Open Anyway exception](https://support.apple.com/en-us/102445).
 
-Preparation is local to this Mac, model paths and compute configuration. It is not a portable
-cache bundled for other machines; macOS can also invalidate it after an OS update or purge it
+Preparation is specific to this Mac, the model paths and the compute configuration. It is not a
+portable cache bundled for other machines; macOS can also invalidate it after an OS update or purge it
 to reclaim space. A first load may need preparation again in those cases.
 
 ## Editing the interface in Xcode

@@ -78,8 +78,8 @@ own model on first use. The bundle contains no personal recordings or transcript
 signing is not Developer ID signing or Apple notarization, so another Mac may require an
 [Open Anyway exception](https://support.apple.com/en-us/102445).
 
-Preparation is local to this Mac, model paths and compute configuration. It is not a portable
-cache bundled for other machines; macOS can also invalidate it after an OS update or purge it
+Preparation is specific to this Mac, the model paths and the compute configuration. It is not a
+portable cache bundled for other machines; macOS can also invalidate it after an OS update or purge it
 to reclaim space. A first load may need preparation again in those cases.
 
 ## Editing the interface in Xcode
@@ -230,9 +230,10 @@ with no package dependencies:
 | `EncoderSet.swift` | picks the shortest encoder window that holds a segment |
 | `MultiArray.swift` | small `MLMultiArray` helpers |
 
-The Ultra model files are FluidAudio's Core ML conversion (Apache 2.0) of moondream's checkpoint
-(CC-BY-4.0): a fixed 15 s preprocessor and int8 encoder, an LSTM decoder, and a joint network
-that returns token, probability and duration bin directly.
+The Ultra model files are FluidInference's Core ML conversion of moondream's checkpoint, which is
+based on NVIDIA's Parakeet TDT 0.6B v3 (all CC-BY-4.0, see [NOTICE](../NOTICE)): a fixed 15 s
+preprocessor and int8 encoder, an LSTM decoder, and a joint network that returns token, probability
+and duration bin directly.
 
 ### Voice-activity head
 

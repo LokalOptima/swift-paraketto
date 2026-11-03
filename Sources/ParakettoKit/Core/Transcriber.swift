@@ -35,10 +35,9 @@ actor Transcriber {
             recordURL: store.ownDirectory.deletingLastPathComponent()
                 .appendingPathComponent(".multi-preparation.json"))
         progress(preparation.isPrepared ? .loading : .optimizing)
-        let vadModel = vadModelURL
-        if vadModel == nil { Log.info("VadHead.mlmodelc not bundled; long recordings fall back to fixed windows") }
+        if vadModelURL == nil { Log.info("VadHead.mlmodelc not bundled; long recordings fall back to fixed windows") }
         // VadHead includes its own trained subsampler and detects pauses independently.
-        let models = try ParakeetModels(directory: directory, vadModel: vadModel, encoderModel: store.ownEncoderURL, fusedDecoder: store.ownFusedDecoderURL)
+        let models = try ParakeetModels(directory: directory, vadModel: vadModelURL, encoderModel: store.ownEncoderURL, fusedDecoder: store.ownFusedDecoderURL)
         Log.info("encoder windows (mel frames): \(models.encoder.variants.map(\.melFrames))")
         let transcriber = try ParakeetTranscriber(models: models)
         try transcriber.warmUp()
@@ -115,11 +114,6 @@ actor Transcriber {
 
     enum TranscriberError: LocalizedError {
         case notLoaded
-
-        var errorDescription: String? {
-            switch self {
-            case .notLoaded: return "The speech model has not finished loading."
-            }
-        }
+        var errorDescription: String? { "The speech model has not finished loading." }
     }
 }

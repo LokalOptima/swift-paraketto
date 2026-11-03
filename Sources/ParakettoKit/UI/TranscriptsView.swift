@@ -218,7 +218,7 @@ struct TranscriptsView: View {
     }
 }
 
-/// Appears only while dragging over History; there is no persistent import prompt.
+/// Appears only while dragging over Transcripts; there is no persistent import prompt.
 struct AudioFileDropOverlay: View {
     let isAvailable: Bool
 

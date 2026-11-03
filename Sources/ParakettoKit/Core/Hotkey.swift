@@ -3,22 +3,6 @@ import Foundation
 
 /// A system-wide hotkey built on Carbon's RegisterEventHotKey.
 final class Hotkey {
-    struct Binding {
-        let keyCode: UInt32
-        let carbonModifiers: UInt32
-        let label: String
-
-        init(keyCode: UInt32, carbonModifiers: UInt32, label: String) {
-            self.keyCode = keyCode
-            self.carbonModifiers = carbonModifiers
-            self.label = label
-        }
-
-        init(_ chord: Chord) {
-            self.init(keyCode: UInt32(chord.keyCode), carbonModifiers: chord.carbonModifiers, label: chord.label)
-        }
-    }
-
     /// Non-nil when the system refused the registration, typically because another app owns the chord.
     private(set) var registrationError: OSStatus?
 
@@ -28,12 +12,12 @@ final class Hotkey {
     private var handlerRef: EventHandlerRef?
     private let onPress: () -> Void
 
-    init(binding: Binding, onPress: @escaping () -> Void) {
+    init(chord: Chord, onPress: @escaping () -> Void) {
         self.onPress = onPress
         id = Self.nextID
         Self.nextID += 1
         installHandler()
-        register(binding)
+        register(chord)
     }
 
     deinit {
@@ -69,17 +53,17 @@ final class Hotkey {
         }
     }
 
-    private func register(_ binding: Binding) {
+    private func register(_ chord: Chord) {
         let hotKeyID = EventHotKeyID(signature: fourCharCode("PKTU"), id: id)
         let status = RegisterEventHotKey(
-            binding.keyCode, binding.carbonModifiers, hotKeyID,
+            UInt32(chord.keyCode), chord.carbonModifiers, hotKeyID,
             GetApplicationEventTarget(), 0, &hotKeyRef
         )
         if status == noErr {
-            Log.info("Hotkey \(binding.label) registered")
+            Log.info("Hotkey \(chord.label) registered")
         } else {
             registrationError = status
-            Log.info("RegisterEventHotKey failed for \(binding.label): \(status)")
+            Log.info("RegisterEventHotKey failed for \(chord.label): \(status)")
         }
     }
 

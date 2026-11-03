@@ -197,7 +197,7 @@ struct DictionaryEditor: View {
     }
 }
 
-/// The outline shared by the editor's fields and the dictionary's search field.
+/// The outline shared by the editor's fields and the search fields.
 struct OutlinedField<Content: View>: View {
     var isFocused = false
     @ViewBuilder let content: Content

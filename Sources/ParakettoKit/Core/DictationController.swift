@@ -65,7 +65,6 @@ final class DictationController: ObservableObject {
     /// Set for Xcode's canvas, which must not write to the user's log or load models.
     private var isPreview = false
     let meter = RecordingMeter()
-    @Published private(set) var destination: Destination?
     @Published private(set) var modelError: String?
     @Published private(set) var isLoadingModel = true
     @Published private(set) var isStartingRecording = false
@@ -109,6 +108,7 @@ final class DictationController: ObservableObject {
     private var smoother = LevelSmoother()
     private var meterTask: Task<Void, Never>?
     private var recordingStarted = Date()
+    private var destination: Destination?
     private var transcription: Task<Void, Never>?
     /// Coalesces file-length notifications; audio stays on disk if inference falls behind.
     private var audioStream: AsyncStream<Int>.Continuation?
@@ -147,7 +147,7 @@ final class DictationController: ObservableObject {
         guard !shortcuts.isRecording else { return }
         switch shortcuts.shortcut {
         case .chord(let chord):
-            let hotkey = Hotkey(binding: Hotkey.Binding(chord), onPress: { [weak self] in self?.toggleRecording() })
+            let hotkey = Hotkey(chord: chord, onPress: { [weak self] in self?.toggleRecording() })
             self.hotkey = hotkey
             isShortcutInUse = hotkey.registrationError != nil
             if isShortcutInUse, state == .idle {
@@ -166,13 +166,8 @@ final class DictationController: ObservableObject {
         transcription?.cancel()
         transcription = nil
         if state == .recording { _ = try? recorder.stop() }
-        audioStream?.finish()
-        audioStream = nil
-        feeder?.cancel()
-        feeder = Task { [transcriber, feeder] in await feeder?.value; await transcriber.discard() }
-        finishSession()
-        state = .idle
-        overlay?.hide()
+        discardSession()
+        returnToIdle()
     }
 
     private func loadModel() async {
@@ -327,23 +322,17 @@ final class DictationController: ObservableObject {
         do { recording = try recorder.stop() }
         catch {
             Log.info("Recorder stop failed: \(error)")
-            audioStream?.finish()
-            audioStream = nil
-            feeder?.cancel()
-            feeder = Task { [transcriber, feeder] in await feeder?.value; await transcriber.discard() }
-            finishSession()
+            discardSession()
             show(.failed("Recording failed"))
+            return
+        }
+        guard recording.sampleCount >= Transcriber.minimumSamples else {
+            discardSession()
+            returnToIdle()
             return
         }
         audioStream?.finish()
         audioStream = nil
-        guard recording.sampleCount >= Transcriber.minimumSamples else {
-            feeder = Task { [transcriber, feeder] in await feeder?.value; await transcriber.discard() }
-            finishSession()
-            state = .idle
-            overlay?.hide()
-            return
-        }
         state = .transcribing
         transcription = Task { [feeder] in
             let started = Date()
@@ -358,8 +347,7 @@ final class DictationController: ObservableObject {
                 Log.info("finished \(String(format: "%.1f", duration))s recording \(inferenceMilliseconds) ms after stop, \(text.count) characters")
                 finishSession()
                 guard !text.isEmpty else {
-                    state = .idle
-                    overlay?.hide()
+                    returnToIdle()
                     return
                 }
                 // Keep the original and audio even if paste delivery fails or is cancelled.
@@ -374,8 +362,7 @@ final class DictationController: ObservableObject {
                 try history.updateDelivery(id: entry.id, to: delivery(for: outcome))
                 switch outcome {
                 case .pasted:
-                    state = .idle
-                    overlay?.hide()
+                    returnToIdle()
                 case .copiedOnly:
                     show(.notice("Copied"))
                 case .destinationChanged:
@@ -411,11 +398,11 @@ final class DictationController: ObservableObject {
         // one, which consumes the key so that one press never also acts on the window.
         escapeMonitors = [
             NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard event.keyCode == 53 else { return }
+                guard event.isEscape else { return }
                 Task { @MainActor in self?.cancel() }
             },
             NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard event.keyCode == 53, !Self.escapeBelongsToField(event.window?.firstResponder) else { return event }
+                guard event.isEscape, !Self.escapeBelongsToField(event.window?.firstResponder) else { return event }
                 Task { @MainActor in self?.cancel() }
                 return nil
             },
@@ -444,6 +431,20 @@ final class DictationController: ObservableObject {
         escapeMonitors = []
         meterTask?.cancel()
         meterTask = nil
+    }
+
+    /// Ends a recording that won't be transcribed, once its audio has stopped arriving.
+    private func discardSession() {
+        audioStream?.finish()
+        audioStream = nil
+        feeder?.cancel()
+        feeder = Task { [transcriber, feeder] in await feeder?.value; await transcriber.discard() }
+        finishSession()
+    }
+
+    private func returnToIdle() {
+        state = .idle
+        overlay?.hide()
     }
 
     /// Shows a transient message in the pill, then returns to idle so the hotkey keeps working.

@@ -1,0 +1,15 @@
+The MIT license in LICENSE covers Paraketto's code. The models below are not
+covered by it and stay under CC BY 4.0
+(https://creativecommons.org/licenses/by/4.0/).
+
+Resources/VadHead.mlpackage, included in this repository
+    The subsampler and voice-activity head of Parakeet Ultra by moondream
+    (https://huggingface.co/moondream/parakeet-ultra), extracted and
+    converted to Core ML.
+
+Speech recognition models, downloaded on first use and not included here
+    The Core ML conversion of Parakeet Ultra by FluidInference
+    (https://huggingface.co/FluidInference/parakeet-ultra-coreml).
+
+Parakeet Ultra is based on Parakeet TDT 0.6B v3 by NVIDIA
+(https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3).

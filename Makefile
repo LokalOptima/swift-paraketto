@@ -16,18 +16,24 @@ APP_ICON      := .build/Paraketto.icns
 ICON_SOURCE   := Resources/paraketto.png
 FIXTURES      := tests/fixtures/librispeech_fluidaudio.tsv
 CLIPS         ?= data/librispeech/*.wav
-# Signing. macOS ties the Accessibility grant to the app's signature. With the "Paraketto Dev"
-# self-signed certificate in the login keychain (see docs/internals.md) every build carries the same
-# signature and the grant survives; without it codesign falls back to ad-hoc ("-"), whose
-# signature changes on every build. The certificate is selected by the SHA-1 hash that
+# Signing. macOS ties the Microphone and Accessibility grants to the app's signature. With the
+# "Paraketto Dev" self-signed certificate in the login keychain (see docs/internals.md) every build
+# carries the same signature and the grants survive; without it codesign falls back to ad-hoc ("-"),
+# whose signature changes on every build. The certificate is selected by the SHA-1 hash that
 # `security find-identity` prints, so a certificate imported twice is not "ambiguous" to codesign.
 # Override with SIGN_IDENTITY=<hash or name>; the bundle target then checks the signature
 # against SIGN_NAME, so set that too for a differently named certificate.
 SIGN_NAME     ?= Paraketto Dev
 SIGN_IDENTITY ?= $(or $(shell security find-identity -p codesigning 2>/dev/null | grep -F '"$(SIGN_NAME)"' | head -1 | awk '{print $$2}'),-)
 SIGN_IDENTITY := $(SIGN_IDENTITY)
+DIST_DIR      := .build/dist
+DIST_ZIP      := $(DIST_DIR)/$(APP_NAME).zip
+# Signed ad hoc unless this names a certificate, as the GitHub release build does.
+DIST_SIGN_NAME ?=
+# From the last commit, which is what `dist` builds, and only worked out when a release needs it.
+VERSION        = $(shell git show HEAD:Resources/Info.plist | plutil -extract CFBundleShortVersionString raw -o - -)
 
-.PHONY: all build bundle xcode-bundle icons run prepare-models trust vad cli test test-models compare longform vad-export encoder-export decoder-export clean
+.PHONY: all build bundle xcode-bundle icons run prepare-models trust vad dist release cli test test-models compare longform vad-export encoder-export decoder-export clean
 
 MODELS_DIR    := $(HOME)/Library/Application Support/Paraketto/models
 
@@ -60,6 +66,7 @@ bundle: build vad icons
 	cp $(APP_ICON) $(CONTENTS)/Resources/
 	cp .build/ParakettoMenu.png $(CONTENTS)/Resources/
 	cp -R $(VAD_COMPILED) $(CONTENTS)/Resources/
+	cp LICENSE NOTICE $(CONTENTS)/Resources/
 # The first codesign with a new key blocks on a keychain dialog until "Always Allow" is clicked.
 	codesign --force --sign "$(SIGN_IDENTITY)" \
 		--entitlements Resources/$(APP_NAME).entitlements \
@@ -71,7 +78,7 @@ ifneq ($(SIGN_IDENTITY),-)
 		|| { echo "error: $(BUNDLE) is not signed by $(SIGN_NAME); removing it"; rm -rf $(BUNDLE); exit 1; }
 	@echo "signed with: $(SIGN_NAME) ($(SIGN_IDENTITY))"
 else
-	@echo "signed ad-hoc: no $(SIGN_NAME) certificate found, the Accessibility grant will not survive rebuilds"
+	@echo "signed ad-hoc: without the $(SIGN_NAME) certificate, the Accessibility grant will not survive rebuilds"
 endif
 ifeq ($(PREPARE_MODELS),1)
 	$(CONTENTS)/MacOS/$(APP_NAME) --prepare-models --cached-only
@@ -108,6 +115,38 @@ ifeq ($(INSTALL_APP),1)
 else
 	open $(BUNDLE)
 endif
+
+# The download for other Macs, which GitHub builds for each release (.github/workflows/release.yml).
+# Made from a copy of the last commit, so uncommitted work stays out and this checkout's build and the
+# app in /Applications are left alone. It never uses the Paraketto Dev certificate. Its name stays the
+# same because the README links to .../releases/latest/download/Paraketto.zip.
+dist:
+	rm -rf $(DIST_DIR)
+	mkdir -p $(DIST_DIR)/source $(DIST_DIR)/unzipped
+	git archive HEAD | tar -x -C $(DIST_DIR)/source
+	$(MAKE) -C $(DIST_DIR)/source bundle CONFIG=release INSTALL_APP=0 PREPARE_MODELS=0 \
+		$(if $(DIST_SIGN_NAME),SIGN_NAME="$(DIST_SIGN_NAME)",SIGN_IDENTITY=-)
+	ditto -c -k --keepParent $(DIST_DIR)/source/$(BUNDLE) $(DIST_ZIP)
+# Checks what people will get. macOS kills an app that uses the microphone without the entitlement or the usage text.
+	ditto -x -k $(DIST_ZIP) $(DIST_DIR)/unzipped
+	codesign --verify --deep --strict $(DIST_DIR)/unzipped/$(BUNDLE)
+ifneq ($(DIST_SIGN_NAME),)
+# Without the certificate the build falls back to ad hoc, and each update would lose its permissions.
+	@codesign -dvv $(DIST_DIR)/unzipped/$(BUNDLE) 2>&1 | grep -qxF 'Authority=$(DIST_SIGN_NAME)' \
+		|| { echo "error: the download is not signed by $(DIST_SIGN_NAME)"; exit 1; }
+endif
+	codesign -d --entitlements - --xml $(DIST_DIR)/unzipped/$(BUNDLE) | grep -q com.apple.security.device.audio-input
+	/usr/libexec/PlistBuddy -c 'Print NSMicrophoneUsageDescription' $(DIST_DIR)/unzipped/$(CONTENTS)/Info.plist > /dev/null
+	test "$$(lipo -archs $(DIST_DIR)/unzipped/$(CONTENTS)/MacOS/$(APP_NAME))" = arm64
+	rm -rf $(DIST_DIR)/source $(DIST_DIR)/unzipped
+	@echo "$(DIST_ZIP): version $(VERSION), commit $$(git rev-parse --short HEAD)"
+
+# Pushes the tag v$(VERSION) for the last commit. GitHub then builds the download and publishes the release.
+release:
+	@git fetch -q origin && git merge-base --is-ancestor HEAD origin/master || { echo "error: push this commit to master first, as GitHub builds the release from it"; exit 1; }
+	@if git ls-remote --exit-code --tags origin v$(VERSION) > /dev/null; then echo "error: v$(VERSION) already exists, so raise the version in Resources/Info.plist"; exit 1; fi
+	git push origin HEAD:refs/tags/v$(VERSION)
+	@echo "GitHub is building v$(VERSION) and publishes it when the build finishes. Follow it on the repository's Actions tab."
 
 # Drops the stale Accessibility entry left by a previous (ad-hoc) build and opens the
 # Accessibility pane so the running build can be granted again.

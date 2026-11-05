@@ -12,7 +12,7 @@ Neural Engine with Core ML. Audio and transcripts stay on the Mac.
 - Transcription runs while you speak: every pause of 0.8 s ends a segment and it is transcribed right away, so when you pause before stopping the text is already there
 - Floating pill while recording: a level meter on a -65 to -25 dBFS scale with 30 ms attack / 160 ms release smoothing; brief peaks are retained between display updates. Errors in the pill are kept short; the details are in `~/Library/Logs/Paraketto.log`
 - Text is pasted only if the app that had focus when you started still has it; otherwise it is kept in history. Dictating with Paraketto itself in front only copies the text
-- **Transcripts** (right-click the menu-bar icon, or choose Transcripts in its menu): the last 7 days of recordings grouped by day, with download, copy, delete, and word count stats. Entries show up to four lines; hover to reveal actions and expand longer text. Download saves the recording as a WAV through a save dialog that starts in Downloads, because writing there directly would need a permission of its own
+- **Transcripts** (right-click the menu-bar icon, or choose Transcripts in its menu): the last 7 days of recordings grouped by day, with download, copy, delete, and word count stats. Entries show up to four lines; hover to reveal actions and expand longer text. The actions stay hidden while you scroll, so they don't flicker past a still pointer, and return 0.2 s after your fingers lift, without waiting for the glide to finish. With a mouse wheel, they return 0.2 s after the last notch. Delete asks first and quotes the start of the transcript, because it can't be undone and a glide can put a different row under the pointer. Download saves the recording as a WAV through a save dialog that starts in Downloads, because writing there directly would need a permission of its own
 - **Search** (top of Transcripts): finds text as shown in the last 7 days, ignoring case and accents, including stroked letters such as `ł` and `ø`. It starts at two characters, because a single letter would match nearly everything. Matches are highlighted, and each entry and the footer count them. An entry whose matches would fall past its fourth line shows excerpts sampled across them instead, still within four lines; expanding it shows the whole transcript with every match highlighted. A new dictation or a dropped file clears the search so its transcript isn't hidden
 - **Esc**: clears the search first, and cancels an import once the search is empty. During a dictation it discards the dictation, unless a text field holding text has focus, where it acts on that field
 - **Transcripts folder** (the button beside search): every transcript is also a plain text file in `~/Library/Application Support/Paraketto/transcripts/`, named by date and time and holding the text as shown. A transcript leaves the Transcripts view after 7 days, so search stays fast however many pile up. Its file stays and its recording is deleted, so a recording worth keeping has to be downloaded before then. Deleting a transcript in the app also deletes its file
@@ -53,7 +53,7 @@ make run
 This builds with SwiftPM, compiles the VAD model, assembles `Paraketto.app`, signs it,
 prepares the downloaded model for this Mac, updates `/Applications/Paraketto.app`,
 and launches that installed copy. `make bundle` also updates the Applications copy on every
-successful build, ready to open or compress in Finder for sharing.
+successful build.
 
 Core ML's portable `.mlmodelc` files still need device-specific specialization when first
 loaded. `make bundle` performs that load and warm-up through the signed app executable,
@@ -72,15 +72,65 @@ a system cache purge can still make a later **Loading** take longer.
 Quit and reopen the app after a rebuild to run the new version. `make clean` removes local
 build outputs; it does not uninstall the Applications copy or remove models and transcripts.
 
-To share a build, compress `/Applications/Paraketto.app` in Finder and send the ZIP. The recipient
-needs Apple Silicon and macOS 14+, grants Microphone and Accessibility access, and downloads their
-own model on first use. The bundle contains no personal recordings or transcripts. Local development
-signing is not Developer ID signing or Apple notarization, so another Mac may require an
-[Open Anyway exception](https://support.apple.com/en-us/102445).
-
 Preparation is specific to this Mac, the model paths and the compute configuration. It is not a
 portable cache bundled for other machines; macOS can also invalidate it after an OS update or purge it
 to reclaim space. A first load may need preparation again in those cases.
+
+### Releases
+
+Other people download `Paraketto.zip` from a GitHub release instead of building. They need Apple
+Silicon and macOS 14+, grant Microphone and Accessibility access, and download their own model on
+first use. The zip contains no recordings or transcripts.
+
+To release, raise `CFBundleShortVersionString` and `CFBundleVersion` in `Info.plist`, commit, push,
+and run `make release`. It refuses a commit that isn't pushed and a version that already exists, then
+pushes the tag `v<version>`. The tag starts `.github/workflows/release.yml`, which runs `make dist` on
+a GitHub macOS runner and publishes the release with the zip. If that build fails, the tag stays
+without a release: delete it with `git push --delete origin v<version>`, fix the problem and run
+`make release` again. To test a change to the workflow without publishing, start it from the
+repository's Actions tab (**Release → Run workflow**), which builds and signs but doesn't publish.
+
+`make dist` builds the zip in `.build/dist` from a copy of the last commit, so uncommitted work stays
+out and this checkout's build and `/Applications` are left alone. It packs with `ditto`, as
+[Apple describes](https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution),
+then unzips the result and checks its signature, microphone entitlement, usage text and architecture.
+Run it locally to check a release before tagging. Locally it signs ad hoc; `DIST_SIGN_NAME` names a
+certificate instead, and the build then fails if the zip isn't signed by it.
+
+Releases are signed with their own self-signed certificate, `Paraketto Release`, so updates keep their
+permissions. It exists only in the repository secrets `RELEASE_CERTIFICATE_P12` (the `.p12`, in
+base64) and `RELEASE_CERTIFICATE_PASSWORD`. The workflow imports it into a temporary keychain, and
+GitHub doesn't pass secrets to workflows run from forks. The `Paraketto Dev` certificate stays on the
+development Mac. Anyone with either private key can sign an app that macOS treats as Paraketto, with
+the permissions people gave it.
+
+The release certificate expires in November 2036. To replace it, or if the secrets are lost, create a
+new one with the commands under [Accessibility and rebuilds](#accessibility-and-rebuilds), using
+`/CN=Paraketto Release`, `-name "Paraketto Release"` and a random password instead of `x`, and skip the
+import. Then upload it, entering the password when asked:
+
+```bash
+base64 -i release.p12 | gh secret set RELEASE_CERTIFICATE_P12
+gh secret set RELEASE_CERTIFICATE_PASSWORD
+```
+
+After that release, people run `tccutil reset All io.lfrati.paraketto` once and grant both permissions
+again.
+
+Releases aren't notarized, which needs a Developer ID certificate from the paid Apple Developer
+Program. Browsers mark downloads with a quarantine attribute, and Gatekeeper blocks a marked app until
+`xattr` removes the mark. Control-click stopped working in macOS 15, and the release notes for macOS
+26 and 27 list no change to this. Apple also documents
+[Open Anyway](https://support.apple.com/en-us/102445) in System Settings for apps that aren't
+notarized, without saying which apps get the button. `syspolicy_check distribution` reports the
+missing notarization as the release build's only problem, but the button hasn't been seen for
+Paraketto, so the README gives only `xattr`. The README has people move the app to
+Applications first, because Gatekeeper opens an app that hasn't been moved from a random read-only path
+on its first launch.
+
+Moving to Developer ID later means signing with it, adding `--timestamp` and notarizing the zip with
+`notarytool`. The `xattr` step would then go away, and since the signature changes, people would grant
+both permissions once more.
 
 ## Editing the interface in Xcode
 
@@ -144,6 +194,26 @@ The shortcut needs neither permission. Key combinations are Carbon hotkeys. A ba
 on macOS delivering modifier changes to global monitors without Accessibility, which Apple does not
 document (checked on macOS 15.8). Other keys are withheld, so the tap reads the system's input counters
 to tell a tap from Option+letter.
+
+### Permissions and signatures
+
+macOS remembers both grants against the app's
+[designated requirement](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements).
+With the `Paraketto Dev` certificate that is the bundle ID and the certificate's hash, so `make run`
+builds count as the same app and keep their grants. The certificate doesn't need to be trusted: on
+the development Mac it reports `CSSMERR_TP_NOT_TRUSTED`, and grants still survive rebuilds. If the
+certificate ever changes, the switch looks on but isn't honored. Run
+`tccutil reset Accessibility io.lfrati.paraketto` and grant it again.
+
+Releases are signed with the `Paraketto Release` certificate described under [Releases](#releases),
+so their requirement is the bundle ID and that certificate's hash, and updates keep their grants. An
+ad-hoc signature's requirement matches only that exact build, so every update would need the grants
+again.
+
+`AXIsProcessTrusted` updates while the app runs. Posting Cmd+V is a separate privilege under the same
+switch, and [Apple says](https://developer.apple.com/forums/thread/727984)
+`CGPreflightPostEventAccess` doesn't update until a relaunch. Whether pasting works straight after a
+first grant is untested, so the log records both at launch and at each delivery.
 
 ### Accessibility and rebuilds
 

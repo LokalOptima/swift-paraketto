@@ -7,6 +7,7 @@ struct TranscriptRow: View {
     @ObservedObject var store: HistoryStore
     let dictionary: DictionaryStore
     let removeAlias: (String, UUID) -> Void
+    let delete: () -> Void
     /// Where the active search matches this transcript.
     let matches: [NSRange]
     @Binding var expanded: Bool
@@ -17,11 +18,14 @@ struct TranscriptRow: View {
     @State private var copied = false
     @State private var copySequence = 0
     @FocusState private var focusedAction: Action?
+    @ObservedObject private var scrollActivity = ScrollActivity.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
 
     private enum Action: Hashable { case expand, download, copy, delete }
-    private var showsActions: Bool { isHovered || focusedAction != nil || voiceOverEnabled }
+    private var showsActions: Bool {
+        (isHovered && !scrollActivity.isScrolling) || focusedAction != nil || voiceOverEnabled
+    }
 
     private var canExpand: Bool { isTruncated || expanded }
 
@@ -47,7 +51,7 @@ struct TranscriptRow: View {
                 .help(expanded ? "Collapse transcript" : "Expand transcript")
                 .opacity(canExpand && showsActions ? 1 : 0)
                 .allowsHitTesting(canExpand && showsActions)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.12), value: showsActions)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: showsActions)
             }
             HStack(spacing: 8) {
                 Text(entry.date.formatted(.dateTime.hour().minute()))
@@ -109,7 +113,7 @@ struct TranscriptRow: View {
             .help(copied ? "Copied!" : "Copy transcript")
 
             Button(role: .destructive) {
-                store.remove(entry)
+                delete()
             } label: {
                 Image(systemName: "trash")
                     .frame(width: 28, height: 24)
@@ -123,7 +127,7 @@ struct TranscriptRow: View {
         // Keep the reserved width so revealing controls never shifts the metadata.
         .opacity(showsActions ? 1 : 0)
         .allowsHitTesting(showsActions)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.12), value: showsActions)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: showsActions)
     }
 
     /// Asks where to save because writing straight to Downloads would need a permission of its own.
@@ -169,5 +173,50 @@ struct TranscriptRow: View {
 
     private func toggleExpansion() {
         withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.15)) { expanded.toggle() }
+    }
+}
+
+/// Whether a scroll is under way, when hover means nothing: rows passing under a still pointer count
+/// as hovered, which would make their actions flicker past. Separate from the rows' parent so that
+/// starting and stopping re-renders only the rows, not the whole list.
+@MainActor
+final class ScrollActivity: ObservableObject {
+    static let shared = ScrollActivity()
+
+    /// Short, because the glide after the fingers lift can take a second and the actions shouldn't wait for it.
+    private static let waitAfterLift: Duration = .milliseconds(200)
+    /// The lift never arrives if another window comes up under the fingers, which would leave the actions hidden.
+    private static let liftTimeout: Duration = .seconds(2)
+
+    @Published private(set) var isScrolling = false
+    private var hoverReturn: Task<Void, Never>?
+    private var monitor: Any?
+
+    private init() {
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            self?.scrolled(phase: event.phase, momentumPhase: event.momentumPhase)
+            return event
+        }
+    }
+
+    func scrolled(phase: NSEvent.Phase, momentumPhase: NSEvent.Phase) {
+        // Older mice report no phases, so each notch both starts a scroll and ends it.
+        let isWheelNotch = phase.isEmpty && momentumPhase.isEmpty
+        if phase == .began || phase == .changed || isWheelNotch {
+            // Events arrive at the display's rate, and each assignment would re-render the rows.
+            if !isScrolling { isScrolling = true }
+            endScrolling(after: isWheelNotch ? Self.waitAfterLift : Self.liftTimeout)
+        } else if isScrolling, phase == .ended || phase == .cancelled {
+            endScrolling(after: Self.waitAfterLift)
+        }
+    }
+
+    private func endScrolling(after wait: Duration) {
+        hoverReturn?.cancel()
+        hoverReturn = Task {
+            try? await Task.sleep(for: wait)
+            guard !Task.isCancelled else { return }
+            isScrolling = false
+        }
     }
 }

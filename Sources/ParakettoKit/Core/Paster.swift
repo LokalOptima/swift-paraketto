@@ -29,6 +29,12 @@ enum Paster {
         AXIsProcessTrusted()
     }
 
+    /// For the log. System Settings shows these as one switch, but macOS tracks them separately,
+    /// and the second may not update until the app is reopened.
+    static var eventAccessSummary: String {
+        "accessibility \(isAccessibilityTrusted), post events \(CGPreflightPostEventAccess())"
+    }
+
     /// Shows the one-time system prompt if Accessibility has not been granted yet.
     static func requestAccessibility() {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary

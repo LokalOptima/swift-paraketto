@@ -2,7 +2,7 @@ The MIT license in LICENSE covers Paraketto's code. The models below are not
 covered by it and stay under CC BY 4.0
 (https://creativecommons.org/licenses/by/4.0/).
 
-Resources/VadHead.mlpackage, included in this repository
+Resources/VadHead.mlpackage, included in this repository and, compiled, in the app
     The subsampler and voice-activity head of Parakeet Ultra by moondream
     (https://huggingface.co/moondream/parakeet-ultra), extracted and
     converted to Core ML.

@@ -138,6 +138,13 @@ on macOS delivering modifier changes to global monitors without Accessibility, w
 document (checked on macOS 15.8). Other keys are withheld, so the tap reads the system's input counters
 to tell a tap from Option+letter.
 
+### Permissions and signatures
+
+`AXIsProcessTrusted` updates while the app runs. Posting Cmd+V is a separate privilege under the same
+switch, and [Apple says](https://developer.apple.com/forums/thread/727984)
+`CGPreflightPostEventAccess` doesn't update until a relaunch. Whether pasting works straight after a
+first grant is untested, so the log records both at launch and at each delivery.
+
 ### Accessibility and rebuilds
 
 macOS ties the Accessibility grant to the app's code signature. With ad-hoc signing every

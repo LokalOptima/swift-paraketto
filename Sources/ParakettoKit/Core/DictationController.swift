@@ -123,7 +123,7 @@ final class DictationController: ObservableObject {
 
     func start() {
         Log.startSession()
-        Log.info("launch, log at \(Log.fileURL.path)")
+        Log.info("launch, log at \(Log.fileURL.path), \(Paster.eventAccessSummary)")
         overlay = Overlay(controller: self)
         recorder.onRMS = { [weak self] rms in
             Task { @MainActor in self?.smoother.update(rms: rms) }
@@ -358,7 +358,7 @@ final class DictationController: ObservableObject {
                 )
                 try history.add(entry, recording: recording)
                 let outcome = try await Paster.deliver(history.process(text).text, to: destination)
-                Log.info("delivery: \(outcome)")
+                Log.info("delivery: \(outcome), \(Paster.eventAccessSummary)")
                 try history.updateDelivery(id: entry.id, to: delivery(for: outcome))
                 switch outcome {
                 case .pasted:

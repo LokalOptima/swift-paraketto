@@ -55,6 +55,7 @@ bundle: build vad icons
 	cp $(APP_ICON) $(CONTENTS)/Resources/
 	cp .build/ParakettoMenu.png $(CONTENTS)/Resources/
 	cp -R $(VAD_COMPILED) $(CONTENTS)/Resources/
+	cp LICENSE NOTICE $(CONTENTS)/Resources/
 # The first codesign with a new key blocks on a keychain dialog until "Always Allow" is clicked.
 	codesign --force --sign "$(SIGN_IDENTITY)" \
 		--entitlements Resources/$(APP_NAME).entitlements \

@@ -1,0 +1,62 @@
+# Builds the download when `make release` pushes a version tag, signs it with the Paraketto Release
+# certificate from the repository's secrets, and publishes it as a release. Running it from the
+# Actions tab builds and signs without publishing, to test a change to this file.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: macos-26
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the tag matches the app version
+        if: github.event_name == 'push'
+        run: |
+          version=$(plutil -extract CFBundleShortVersionString raw -o - Resources/Info.plist)
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match version $version in Resources/Info.plist"
+            exit 1
+          fi
+
+      # A temporary keychain, as in GitHub's "Installing an Apple certificate on macOS runners".
+      # The runner is discarded after the job, and the keychain with it.
+      - name: Import the release certificate
+        env:
+          CERTIFICATE_P12: ${{ secrets.RELEASE_CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.RELEASE_CERTIFICATE_PASSWORD }}
+        run: |
+          if [ -z "$CERTIFICATE_P12" ] || [ -z "$CERTIFICATE_PASSWORD" ]; then
+            echo "::error::The RELEASE_CERTIFICATE_P12 and RELEASE_CERTIFICATE_PASSWORD secrets are missing"
+            exit 1
+          fi
+          keychain="$RUNNER_TEMP/release.keychain-db"
+          keychain_password=$(uuidgen)
+          printf %s "$CERTIFICATE_P12" | base64 --decode -o "$RUNNER_TEMP/release.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/release.p12" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain"
+          security list-keychain -d user -s "$keychain"
+          rm "$RUNNER_TEMP/release.p12"
+
+      - name: Build
+        run: |
+          xcodebuild -version
+          make dist DIST_SIGN_NAME="Paraketto Release"
+
+      - name: Publish
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release create "$GITHUB_REF_NAME" .build/dist/Paraketto.zip --title "Paraketto ${GITHUB_REF_NAME#v}" --generate-notes

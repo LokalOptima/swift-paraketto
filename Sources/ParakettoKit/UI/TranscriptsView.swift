@@ -11,6 +11,8 @@ struct TranscriptsView: View {
     @State private var query: String
     /// Kept here rather than on the rows, so an expanded row stays expanded when a search hides it for a moment.
     @State private var expandedEntries: Set<UUID> = []
+    /// Kept here rather than on the rows, so the question stays up if a new dictation clears the search and hides the row.
+    @State private var deletion: HistoryEntry?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
 
@@ -111,7 +113,8 @@ struct TranscriptsView: View {
                                 Section {
                                     ForEach(section.entries) { entry in
                                         TranscriptRow(entry: entry, store: store, dictionary: controller.dictionary,
-                                                      removeAlias: removeAlias, matches: results.matches[entry.id] ?? [],
+                                                      removeAlias: removeAlias, delete: { deletion = entry },
+                                                      matches: results.matches[entry.id] ?? [],
                                                       expanded: isExpanded(entry))
                                             .padding(.horizontal, 16)
                                         if entry.id != section.entries.last?.id {
@@ -169,6 +172,19 @@ struct TranscriptsView: View {
             // dropped instead, so that a search started while they run isn't lost with each file.
             if new > old, controller.fileImport == nil { query = "" }
         }
+        .confirmationDialog("Delete this transcript?", isPresented: Binding(get: { deletion != nil }, set: { if !$0 { deletion = nil } }),
+                            titleVisibility: .visible, presenting: deletion) { entry in
+            Button("Delete", role: .destructive) { store.remove(entry) }
+        } message: { entry in
+            Text(Self.deletionWarning(for: entry))
+        }
+    }
+
+    /// Quotes the transcript because rows may still be moving, so the one clicked may not be the one intended.
+    static func deletionWarning(for entry: HistoryEntry) -> String {
+        let start = entry.displayText.prefix(80)
+        let excerpt = start.count < entry.displayText.count ? start + "…" : start
+        return "“\(excerpt)”\n\nIts recording and text file will also be deleted. This can't be undone."
     }
 
     private func openTranscriptsFolder() {

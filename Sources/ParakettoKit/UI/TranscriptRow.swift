@@ -7,6 +7,7 @@ struct TranscriptRow: View {
     @ObservedObject var store: HistoryStore
     let dictionary: DictionaryStore
     let removeAlias: (String, UUID) -> Void
+    let delete: () -> Void
     /// Where the active search matches this transcript.
     let matches: [NSRange]
     @Binding var expanded: Bool
@@ -112,7 +113,7 @@ struct TranscriptRow: View {
             .help(copied ? "Copied!" : "Copy transcript")
 
             Button(role: .destructive) {
-                store.remove(entry)
+                delete()
             } label: {
                 Image(systemName: "trash")
                     .frame(width: 28, height: 24)

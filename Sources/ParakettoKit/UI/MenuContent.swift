@@ -90,9 +90,9 @@ struct MenuContent: View {
 
             Divider().padding(.vertical, 4)
             Button {
-                controller.showTranscripts(using: openWindow)
+                controller.showDictionary(using: openWindow)
             } label: {
-                Text("Transcripts")
+                Text("Dictionary")
             }
 
             Divider().padding(.vertical, 4)
@@ -137,7 +137,7 @@ struct MenuContent: View {
 #Preview("Loading") { MenuPreview(.loadingModel) }
 #Preview("Recording") { MenuPreview(.recording) }
 #Preview("Transcribing") { MenuPreview(.transcribing) }
-#Preview("Notice") { MenuPreview(.notice("Kept in history")) }
+#Preview("Notice") { MenuPreview(.notice("Copied")) }
 #Preview("Model failed") {
     MenuPreview(.failed("The network connection was lost."),
                 modelError: "Could not load model: The network connection was lost.")

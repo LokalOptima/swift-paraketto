@@ -65,12 +65,15 @@ enum Paster {
         var paste: () -> Bool
 
         static var live: Operations {
-            Operations(copy: { text in
-                NSPasteboard.general.clearContents()
-                return NSPasteboard.general.setString(text, forType: .string)
-            }, destination: { Destination.frontmost }, accessibilityTrusted: { isAccessibilityTrusted },
+            Operations(copy: Paster.copy, destination: { Destination.frontmost }, accessibilityTrusted: { isAccessibilityTrusted },
                        waitForModifiers: waitForModifiersReleased, paste: sendCommandV)
         }
+    }
+
+    /// Replaces whatever the clipboard held.
+    static func copy(_ text: String) -> Bool {
+        NSPasteboard.general.clearContents()
+        return NSPasteboard.general.setString(text, forType: .string)
     }
 
     @MainActor

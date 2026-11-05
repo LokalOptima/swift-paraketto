@@ -7,64 +7,12 @@ struct DictionaryRule: Codable, Equatable, Identifiable {
     var aliases: [String]
 }
 
-struct Replacement: Equatable {
-    let ruleID: UUID
-    let alias: String
-    let originalRange: NSRange
-    let outputRange: NSRange
-}
-
-struct ReplacementResult: Equatable {
-    let original: String
-    let text: String
-    let replacements: [Replacement]
-
-    /// Map a visible selection back to the original. Never learn half of a replacement.
-    func originalSelection(_ selection: NSRange) -> String? {
-        guard selection.location != NSNotFound, selection.length > 0,
-              NSMaxRange(selection) <= (text as NSString).length else { return nil }
-        let visible = text as NSString
-        var selected = selection
-        while selected.length > 0, Self.isWhitespace(visible.character(at: selected.location)) {
-            selected.location += 1; selected.length -= 1
-        }
-        while selected.length > 0, Self.isWhitespace(visible.character(at: NSMaxRange(selected) - 1)) {
-            selected.length -= 1
-        }
-        guard selected.length > 0 else { return nil }
-        var start = selected.location
-        var end = NSMaxRange(selected)
-        for edit in replacements {
-            if NSIntersectionRange(edit.outputRange, selected).length > 0,
-               !(selected.location <= edit.outputRange.location && NSMaxRange(selected) >= NSMaxRange(edit.outputRange)) {
-                return nil
-            }
-            let delta = edit.originalRange.length - edit.outputRange.length
-            if NSMaxRange(edit.outputRange) <= selected.location { start += delta }
-            if NSMaxRange(edit.outputRange) <= NSMaxRange(selected) { end += delta }
-        }
-        let sourceRange = NSRange(location: start, length: end - start)
-        guard Range(sourceRange, in: original) != nil else { return nil }
-        return (original as NSString).substring(with: sourceRange).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    fileprivate static func isWhitespace(_ unit: UInt16) -> Bool {
-        guard let scalar = Unicode.Scalar(unit) else { return false }
-        return CharacterSet.whitespacesAndNewlines.contains(scalar)
-    }
-}
-
 /// UTF-16 trie: literal code-unit comparisons avoid Swift String's canonical equivalence.
-/// Ranges use UTF-16 too, matching AppKit selection and highlighting APIs.
 struct DictionaryMatcher {
-    private struct Candidate {
-        let ruleID: UUID
-        let alias: String
-        let target: [UInt16]
-    }
     private struct Node {
         var children: [UInt16: Int] = [:]
-        var candidate: Candidate?
+        /// What the alias ending at this node becomes.
+        var target: [UInt16]?
     }
     private var nodes = [Node()]
     private static let trailingPunctuation = Set(".,;'\"?!)’”".utf16)
@@ -87,13 +35,13 @@ struct DictionaryMatcher {
                         node = child
                     }
                 }
-                nodes[node].candidate = Candidate(ruleID: rule.id, alias: alias, target: Array(rule.target.utf16))
+                nodes[node].target = Array(rule.target.utf16)
             }
         }
     }
 
-    func apply(to original: String) -> ReplacementResult {
-        guard nodes.count > 1 else { return ReplacementResult(original: original, text: original, replacements: []) }
+    func apply(to original: String) -> String {
+        guard nodes.count > 1 else { return original }
         let input = Array(original.utf16)
         let protected = Self.protectedRanges(in: original)
         // Mark protected units once; prefix sums make overlap checks constant-time.
@@ -109,10 +57,9 @@ struct DictionaryMatcher {
             protectedCount[i + 1] = protectedCount[i] + (active > 0 ? 1 : 0)
         }
         var output: [UInt16] = []
-        var replacements: [Replacement] = []
         var position = 0
         func isBreak(_ index: Int) -> Bool {
-            index < 0 || index >= input.count || ReplacementResult.isWhitespace(input[index])
+            index < 0 || index >= input.count || Self.isWhitespace(input[index])
         }
         // Punctuation may follow an alias only if the word ends there: "don" must not match in "don't".
         func endsWord(_ index: Int) -> Bool {
@@ -123,32 +70,30 @@ struct DictionaryMatcher {
         while position < input.count {
             var node = 0
             var cursor = position
-            var best: (Candidate, Int)?
+            var best: (target: [UInt16], end: Int)?
             if isBreak(position - 1) {
                 while cursor < input.count, let child = nodes[node].children[input[cursor]] {
                     node = child
                     cursor += 1
-                    if let candidate = nodes[node].candidate, endsWord(cursor),
+                    if let target = nodes[node].target, endsWord(cursor),
                        protectedCount[cursor] == protectedCount[position] {
-                        best = (candidate, cursor)
+                        best = (target, cursor)
                     }
                 }
             }
-            if let (candidate, end) = best {
-                let sourceRange = NSRange(location: position, length: end - position)
-                // An explicitly entered identity alias does not need a highlight.
-                if Array(input[position..<end]) != candidate.target {
-                    replacements.append(Replacement(ruleID: candidate.ruleID, alias: candidate.alias,
-                                                    originalRange: sourceRange,
-                                                    outputRange: NSRange(location: output.count, length: candidate.target.count)))
-                }
-                output += candidate.target
-                position = end
+            if let best {
+                output += best.target
+                position = best.end
             } else {
                 output.append(input[position]); position += 1
             }
         }
-        return ReplacementResult(original: original, text: String(decoding: output, as: UTF16.self), replacements: replacements)
+        return String(decoding: output, as: UTF16.self)
+    }
+
+    private static func isWhitespace(_ unit: UInt16) -> Bool {
+        guard let scalar = Unicode.Scalar(unit) else { return false }
+        return CharacterSet.whitespacesAndNewlines.contains(scalar)
     }
 
     private static func protectedRanges(in text: String) -> [NSRange] {
@@ -215,12 +160,8 @@ final class DictionaryStore: ObservableObject {
 
     func remove(id: UUID) throws { try commit(rules.filter { $0.id != id }) }
 
-    func removeAlias(_ alias: String, from id: UUID) throws {
-        guard var rule = rules.first(where: { $0.id == id }) else { return }
-        rule.aliases.removeAll { Array($0.utf16) == Array(alias.utf16) }
-        if rule.aliases.isEmpty { try remove(id: id) }
-        else { try save(rule) }
-    }
+    /// The text a transcript is delivered and saved with.
+    func apply(to text: String) -> String { DictionaryMatcher(rules: rules).apply(to: text) }
 
     private func commit(_ next: [DictionaryRule]) throws {
         if let loadError { throw DictionaryError(loadError) }

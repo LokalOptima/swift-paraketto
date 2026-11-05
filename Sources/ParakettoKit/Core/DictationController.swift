@@ -10,7 +10,7 @@ final class RecordingMeter: ObservableObject {
     @Published fileprivate(set) var elapsed: TimeInterval = 0
 }
 
-/// Owns the record → transcribe → paste loop and exposes state for the menu bar, overlay and history.
+/// Owns the record → transcribe → paste loop and exposes state for the menu bar, overlay and Dictionary window.
 @MainActor
 final class DictationController: ObservableObject {
     enum State: Equatable {
@@ -86,13 +86,10 @@ final class DictationController: ObservableObject {
         isModelReady && !isLoadingModel && !isStartingRecording && state.canStartRecording && importTask == nil
     }
 
-    enum WindowTab: Hashable { case transcripts, dictionary }
-
-    /// Set while the menu is open, so showing Transcripts can close it from any route.
+    /// Set while the menu is open, so showing the Dictionary can close it from any route.
     var closeMenu: (() -> Void)?
-    @Published var windowTab: WindowTab = .transcripts
     let dictionary: DictionaryStore
-    let history: HistoryStore
+    let transcripts: TranscriptFolder
     let shortcuts: ShortcutSettings
 
     private static let noticeDuration: Duration = .seconds(2)
@@ -114,16 +111,16 @@ final class DictationController: ObservableObject {
     private var audioStream: AsyncStream<Int>.Continuation?
     private var feeder: Task<Void, Never>?
 
-    init(dictionary: DictionaryStore? = nil, historyDirectory: URL? = nil, shortcuts: ShortcutSettings? = nil) {
-        let dictionary = dictionary ?? DictionaryStore()
-        self.dictionary = dictionary
+    init(dictionary: DictionaryStore? = nil, transcripts: TranscriptFolder? = nil, shortcuts: ShortcutSettings? = nil) {
+        self.dictionary = dictionary ?? DictionaryStore()
+        self.transcripts = transcripts ?? TranscriptFolder()
         self.shortcuts = shortcuts ?? ShortcutSettings()
-        history = HistoryStore(directory: historyDirectory, dictionary: dictionary)
     }
 
     func start() {
         Log.startSession()
         Log.info("launch, log at \(Log.fileURL.path), \(Paster.eventAccessSummary)")
+        LegacyHistory.clear(into: transcripts, dictionary: dictionary)
         overlay = Overlay(controller: self)
         recorder.onRMS = { [weak self] rms in
             Task { @MainActor in self?.smoother.update(rms: rms) }
@@ -211,7 +208,9 @@ final class DictationController: ObservableObject {
         Task { await loadModel() }
     }
 
-    /// Finder drops process a batch in order, sharing the loaded recognizer.
+    /// Finder drops process a batch in order, sharing the loaded recognizer. Each transcript gets its
+    /// file as it is done. The clipboard is set once, when the batch ends or is cancelled, so it isn't
+    /// taken over again with every file: it then holds every transcript so far, separated by blank lines.
     @discardableResult
     func importFiles(_ urls: [URL]) -> Bool {
         guard canImportFiles, !urls.isEmpty, urls.allSatisfy(\.isFileURL) else { return false }
@@ -220,35 +219,43 @@ final class DictationController: ObservableObject {
         importErrors = []
         fileImport = FileImportStatus(filename: urls[0].lastPathComponent)
         importTask = Task {
-            defer {
-                fileImport = nil
-                importTask = nil
-                state = .idle
-            }
             await feeder?.value
+            var texts: [String] = []
             for url in urls {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled else { break }
                 let status = FileImportStatus(filename: url.lastPathComponent)
                 fileImport = status
                 do {
-                    let result = try await transcriber.transcribeFile(url) { [weak self] fraction in
+                    let original = try await transcriber.transcribeFile(url) { [weak self] fraction in
                         Task { @MainActor in
                             guard let self, self.fileImport?.id == status.id else { return }
                             self.fileImport?.progress = fraction
                         }
                     }
                     try Task.checkCancellation()
-                    let entry = HistoryEntry(id: UUID(), date: Date(), text: result.text,
-                                             destination: "", duration: result.recording.duration,
-                                             inferenceMilliseconds: result.inferenceMilliseconds,
-                                             delivery: .imported, sourceFilename: url.lastPathComponent)
-                    try history.add(entry, recording: result.recording)
+                    guard !original.isEmpty else {
+                        importErrors.append("\(url.lastPathComponent): No speech detected.")
+                        continue
+                    }
+                    let text = dictionary.apply(to: original)
+                    texts.append(text)
+                    try transcripts.save(text, date: Date())
                 } catch is CancellationError {
-                    return
+                    break
                 } catch {
-                    guard !Task.isCancelled else { return }
+                    guard !Task.isCancelled else { break }
                     importErrors.append("\(url.lastPathComponent): \(error.localizedDescription)")
                 }
+            }
+            fileImport = nil
+            importTask = nil
+            if texts.isEmpty {
+                state = .idle
+            } else if Paster.copy(texts.joined(separator: "\n\n")) {
+                show(.notice("Copied"))
+            } else {
+                importErrors.append(Paster.DeliveryError.clipboardUnavailable.localizedDescription)
+                state = .idle
             }
         }
         return true
@@ -350,24 +357,13 @@ final class DictationController: ObservableObject {
                     returnToIdle()
                     return
                 }
-                // Keep the original and audio even if paste delivery fails or is cancelled.
-                let entry = HistoryEntry(
-                    id: UUID(), date: recordingStarted, text: text,
-                    destination: destination?.name ?? "", duration: duration,
-                    inferenceMilliseconds: inferenceMilliseconds, delivery: .keptInHistory
-                )
-                try history.add(entry, recording: recording)
-                let outcome = try await Paster.deliver(history.process(text).text, to: destination)
+                let delivered = dictionary.apply(to: text)
+                // Saved before the paste so it is kept whatever happens there, but only the paste needs to succeed.
+                do { try transcripts.save(delivered, date: recordingStarted) }
+                catch { Log.info("Could not save a transcript's text file: \(error.localizedDescription)") }
+                let outcome = try await Paster.deliver(delivered, to: destination)
                 Log.info("delivery: \(outcome), \(Paster.eventAccessSummary)")
-                try history.updateDelivery(id: entry.id, to: delivery(for: outcome))
-                switch outcome {
-                case .pasted:
-                    returnToIdle()
-                case .copiedOnly:
-                    show(.notice("Copied"))
-                case .destinationChanged:
-                    show(.notice("Kept in history"))
-                }
+                if outcome == .pasted { returnToIdle() } else { show(.notice("Copied")) }
             } catch is CancellationError {
                 return
             } catch {
@@ -375,14 +371,6 @@ final class DictationController: ObservableObject {
                 finishSession()
                 show(.failed("Dictation failed"))
             }
-        }
-    }
-
-    private func delivery(for outcome: Paster.Outcome) -> HistoryEntry.Delivery {
-        switch outcome {
-        case .pasted: return .pasted
-        case .copiedOnly: return .copied
-        case .destinationChanged: return .keptInHistory
         }
     }
 

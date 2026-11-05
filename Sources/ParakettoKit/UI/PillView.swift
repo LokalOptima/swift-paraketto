@@ -94,7 +94,6 @@ private struct SpectrumMeter: View {
 #Preview("Recording") { PillPreview(.recording) }
 #Preview("Transcribing") { PillPreview(.transcribing) }
 #Preview("Copied") { PillPreview(.notice("Copied")) }
-#Preview("Kept in history") { PillPreview(.notice("Kept in history")) }
 #Preview("Error") { PillPreview(.failed("No mic access")) }
 #Preview("All messages") { PillMessagesPreview() }
 #endif

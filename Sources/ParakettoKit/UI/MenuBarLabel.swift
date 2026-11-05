@@ -18,7 +18,7 @@ struct MenuBarLabel: View {
         }
         .accessibilityLabel("Paraketto: \(controller.state.label)")
         .onAppear {
-            secondaryClick.start { controller.showTranscripts(using: openWindow) }
+            secondaryClick.start { controller.showDictionary(using: openWindow) }
         }
         .onDisappear { secondaryClick.stop() }
     }

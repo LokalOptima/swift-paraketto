@@ -32,8 +32,8 @@ struct ParakettoApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Window("Paraketto", id: "history") {
-            LibraryView(controller: appDelegate.controller)
+        Window("Dictionary", id: "dictionary") {
+            DictionaryView(controller: appDelegate.controller)
                 // Cmd-Tab only lists regular apps, so be one while this window is open.
                 .onAppear { NSApplication.shared.setActivationPolicy(.regular) }
                 .onDisappear { NSApplication.shared.setActivationPolicy(.accessory) }
@@ -46,11 +46,10 @@ extension DictationController {
     /// The order matters. A window-style menu stays open until told otherwise, and closing it after the
     /// window opens can send the app to the background. Becoming regular has to come before activating,
     /// or the app stays last in Cmd-Tab because only a regular app's activation moves it up.
-    func showTranscripts(using openWindow: OpenWindowAction) {
+    func showDictionary(using openWindow: OpenWindowAction) {
         closeMenu?()
-        windowTab = .transcripts
         NSApplication.shared.setActivationPolicy(.regular)
-        openWindow(id: "history")
+        openWindow(id: "dictionary")
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 }

@@ -1,8 +1,8 @@
 #if DEBUG
 import SwiftUI
 
-/// Canvas previews use the real views and stores with disposable sample data.
-/// They never start the controller, load models, register hotkeys, or use personal history.
+/// Canvas previews use the real views and stores with disposable sample data. They never start the
+/// controller, load models, register hotkeys, or touch the real dictionary or transcripts folder.
 @MainActor
 final class PreviewFixtures: ObservableObject {
     let controller: DictationController
@@ -17,30 +17,13 @@ final class PreviewFixtures: ObservableObject {
         defaults = UserDefaults(suiteName: defaultsName)!
         let dictionary = DictionaryStore(url: directory.appendingPathComponent("dictionary.json"))
         controller = DictationController(dictionary: dictionary,
-                                        historyDirectory: directory.appendingPathComponent("history"),
+                                        transcripts: TranscriptFolder(url: directory.appendingPathComponent("transcripts")),
                                         shortcuts: ShortcutSettings(defaults: defaults))
         guard !empty else { return }
         do {
             try dictionary.save(DictionaryRule(target: "GitHub", aliases: ["gee tub", "git hub"]))
             try dictionary.save(DictionaryRule(target: "Paraketto", aliases: ["para keto"]))
             try dictionary.save(DictionaryRule(target: "pop. size", aliases: ["population size"]))
-            let samples = [
-                "I pushed the changes to gee tub, then checked the para keto build.",
-                "There is population size and the specific case. Replacements keep the same contrast as the surrounding text.",
-                String(repeating: "This longer transcript shows how text wraps and expands. ", count: 10)
-                    + "Only here does it mention the quarterly budget, so a search has to reach past the fourth line. "
-                    + String(repeating: "This longer transcript shows how text wraps and expands. ", count: 4),
-                "Yesterday’s note: send us the details at us@example.com."
-            ]
-            // Add oldest first, as HistoryStore inserts new recordings at the top.
-            for index in samples.indices.reversed() {
-                let recording = try RecordingFile(directory: directory)
-                try recording.append([Float](repeating: 0, count: 16_000))
-                let date = Date().addingTimeInterval(index == 3 ? -86_400 : Double(index) * -300)
-                try controller.history.add(HistoryEntry(id: UUID(), date: date, text: samples[index],
-                    destination: index == 0 ? "Signal" : "Notes", duration: 1,
-                    inferenceMilliseconds: 10, delivery: .pasted), recording: recording)
-            }
         } catch {
             fatalError("Could not create preview fixtures: \(error)")
         }
@@ -52,38 +35,24 @@ final class PreviewFixtures: ObservableObject {
     }
 }
 
-struct LibraryPreview: View {
+struct DictionaryPreview: View {
     @StateObject private var fixtures: PreviewFixtures
-    private let tab: DictationController.WindowTab
     private let fileImport: DictationController.FileImportStatus?
     private let importErrors: [String]
 
-    init(tab: DictationController.WindowTab = .transcripts, empty: Bool = false,
-         fileImport: DictationController.FileImportStatus? = nil, importErrors: [String] = []) {
-        self.tab = tab
+    init(empty: Bool = false, fileImport: DictationController.FileImportStatus? = nil, importErrors: [String] = []) {
         self.fileImport = fileImport
         self.importErrors = importErrors
         _fixtures = StateObject(wrappedValue: PreviewFixtures(empty: empty))
     }
 
     var body: some View {
-        LibraryView(controller: fixtures.controller)
+        DictionaryView(controller: fixtures.controller)
             .frame(width: 560, height: 480)
             .onAppear {
-                fixtures.controller.windowTab = tab
                 fixtures.controller.showPreview(fileImport == nil ? .idle : .transcribing,
                                                 fileImport: fileImport, importErrors: importErrors)
             }
-    }
-}
-
-struct TranscriptSearchPreview: View {
-    @StateObject private var fixtures = PreviewFixtures()
-    let query: String
-
-    var body: some View {
-        TranscriptsView(controller: fixtures.controller, removeAlias: { _, _ in }, query: query)
-            .frame(width: 560, height: 480)
     }
 }
 
@@ -162,7 +131,7 @@ struct PillPreview: View {
 /// Every fixed message the pill can show, to see at a glance that none is truncated.
 struct PillMessagesPreview: View {
     private static let messages: [DictationController.State] = [
-        .notice("Copied"), .notice("Kept in history"), .failed("No mic access"), .failed("No microphone"),
+        .notice("Copied"), .failed("No mic access"), .failed("No microphone"),
         .failed("Can’t record"), .failed("Recording failed"), .failed("Dictation failed"), .failed("Shortcut in use"),
     ]
 

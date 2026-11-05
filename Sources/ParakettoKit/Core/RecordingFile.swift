@@ -1,8 +1,8 @@
 import Foundation
 
 /// A disk-backed recording shared by capture and transcription. Float32 WAV preserves
-/// the exact samples for recognition and can be moved straight into History.
-/// The temporary file is removed when its last owner releases it (including cancellation).
+/// the exact samples for recognition. The temporary file is removed when its last owner
+/// releases it, whether the recording was transcribed, cancelled or failed.
 final class RecordingFile: @unchecked Sendable {
     let url: URL
     private let lock = NSLock()
@@ -64,16 +64,6 @@ final class RecordingFile: @unchecked Sendable {
             try handle.write(contentsOf: Self.header(sampleCount: count))
             try handle.synchronize()
             finished = true
-        }
-    }
-
-    /// Called only after capture has stopped and transcription has drained the file.
-    func move(to destination: URL) throws {
-        try finish()
-        try lock.withLock {
-            try handle?.close()
-            handle = nil
-            try FileManager.default.moveItem(at: url, to: destination)
         }
     }
 

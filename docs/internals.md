@@ -371,7 +371,7 @@ languages or a general speed guarantee. The historical LibriSpeech results below
 
 ### Faster than the stock export
 
-`codex/model-optimizations` preserves the optional multi-window encoder and fused decoder.
+`optimizations` preserves the optional multi-window encoder and fused decoder.
 This branch includes their export scripts, Python dependency lockfile and Make targets, alongside
 all cleanup and resource-lifetime improvements from `53ab62d`. Keep this experimental branch
 separate from `master`; the main app uses only the stock exports.

@@ -94,7 +94,7 @@ struct Vocabulary {
         let table = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: url))
         var pieces = Array(repeating: "", count: table.count)
         for (id, piece) in table {
-            guard let index = Int(id), index < pieces.count else { continue }
+            guard let index = Int(id), pieces.indices.contains(index) else { continue }
             pieces[index] = piece
         }
         self.pieces = pieces

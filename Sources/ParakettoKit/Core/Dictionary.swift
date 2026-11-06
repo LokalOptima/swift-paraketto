@@ -5,6 +5,12 @@ struct DictionaryRule: Codable, Equatable, Identifiable {
     var id = UUID()
     var target: String
     var aliases: [String]
+
+    /// Rule changes follow the matcher's literal comparisons, including Unicode spelling.
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.id == rhs.id && lhs.target.utf16.elementsEqual(rhs.target.utf16)
+            && lhs.aliases.elementsEqual(rhs.aliases) { $0.utf16.elementsEqual($1.utf16) }
+    }
 }
 
 /// UTF-16 trie: literal code-unit comparisons avoid Swift String's canonical equivalence.
@@ -120,6 +126,7 @@ final class DictionaryStore: ObservableObject {
     @Published private(set) var rules: [DictionaryRule] = []
     @Published private(set) var loadError: String?
     let url: URL
+    private var matcher = DictionaryMatcher()
 
     init(url: URL? = nil) {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -129,6 +136,7 @@ final class DictionaryStore: ObservableObject {
             let loaded = try JSONDecoder().decode([DictionaryRule].self, from: data)
             try Self.validate(loaded)
             rules = loaded
+            matcher = DictionaryMatcher(rules: loaded)
         } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
             // A new dictionary starts empty.
         } catch {
@@ -146,7 +154,7 @@ final class DictionaryStore: ObservableObject {
     /// Saves a rule, joining it to any other rule with the same target so each target keeps one rule.
     func saveMerging(_ rule: DictionaryRule) throws {
         var next = rules
-        if let index = next.firstIndex(where: { $0.id != rule.id && Array($0.target.utf16) == Array(rule.target.utf16) }) {
+        if let index = next.firstIndex(where: { $0.id != rule.id && $0.target.utf16.elementsEqual(rule.target.utf16) }) {
             let known = next[index].aliases.map { Array($0.utf16) }
             next[index].aliases += rule.aliases.filter { !known.contains(Array($0.utf16)) }
             next.removeAll { $0.id == rule.id }
@@ -161,7 +169,7 @@ final class DictionaryStore: ObservableObject {
     func remove(id: UUID) throws { try commit(rules.filter { $0.id != id }) }
 
     /// The text a transcript is delivered and saved with.
-    func apply(to text: String) -> String { DictionaryMatcher(rules: rules).apply(to: text) }
+    func apply(to text: String) -> String { matcher.apply(to: text) }
 
     private func commit(_ next: [DictionaryRule]) throws {
         if let loadError { throw DictionaryError(loadError) }
@@ -170,6 +178,7 @@ final class DictionaryStore: ObservableObject {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(next).write(to: url, options: .atomic)
+        matcher = DictionaryMatcher(rules: next)
         rules = next
     }
 
@@ -259,7 +268,7 @@ struct ReplacementForm: Equatable {
 
     private mutating func add(_ alias: String) {
         let trimmed = alias.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !aliases.contains(where: { Array($0.utf16) == Array(trimmed.utf16) }) else { return }
+        guard !trimmed.isEmpty, !aliases.contains(where: { $0.utf16.elementsEqual(trimmed.utf16) }) else { return }
         aliases.append(trimmed)
     }
 

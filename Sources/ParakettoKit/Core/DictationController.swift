@@ -60,7 +60,11 @@ final class DictationController: ObservableObject {
     }
 
     @Published private(set) var state: State = .loadingModel {
-        didSet { if state != oldValue, !isPreview { Log.info("state: \(state.label)") } }
+        didSet {
+            noticeTask?.cancel()
+            noticeTask = nil
+            if state != oldValue, !isPreview { Log.info("state: \(state.label)") }
+        }
     }
     /// Set for Xcode's canvas, which must not write to the user's log or load models.
     private var isPreview = false
@@ -110,6 +114,7 @@ final class DictationController: ObservableObject {
     private var recordingStarted = Date()
     private var destination: Destination?
     private var transcription: Task<Void, Never>?
+    private var noticeTask: Task<Void, Never>?
     /// Coalesces file-length notifications; audio stays on disk if inference falls behind.
     private var audioStream: AsyncStream<Int>.Continuation?
     private var feeder: Task<Void, Never>?
@@ -300,7 +305,9 @@ final class DictationController: ObservableObject {
                 audioStream = continuation
                 recorder.onProgress = { continuation.yield($0) }
                 let recording = try recorder.start()
-                feeder = Task { [transcriber] in
+                // Disk reads must not inherit the controller's main actor. Cancellation is
+                // explicit: discardSession cancels this task and waits before reusing the recognizer.
+                feeder = Task.detached(priority: .userInitiated) { [transcriber] in
                     var consumed = 0
                     do {
                         for await available in stream {
@@ -463,11 +470,11 @@ final class DictationController: ObservableObject {
     private func show(_ transient: State) {
         state = transient
         overlay?.show()
-        overlay?.hide(after: Self.noticeDuration)
-        Task { [weak self] in
-            try? await Task.sleep(for: Self.noticeDuration)
-            guard let self, self.state == transient else { return }
-            self.state = .idle
+        noticeTask = Task { [weak self] in
+            do { try await Task.sleep(for: Self.noticeDuration) }
+            catch { return }
+            guard !Task.isCancelled else { return }
+            self?.returnToIdle()
         }
     }
 }

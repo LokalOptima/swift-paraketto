@@ -8,7 +8,7 @@ pasted into whatever app has focus. Multilingual
 Neural Engine with Core ML. Audio and transcripts stay on the Mac.
 
 - Menu bar only. While the Dictionary window is open it also appears in Cmd-Tab, and in the Dock because macOS ties the two together
-- Shortcut: tap `Right ⌥` to start and stop a recording, `Esc` discards it. A tap is a press and release under 0.6 s with no other key in between, so Option+letter typing is unaffected. Click the shortcut beside the status in the menu, then tap another modifier key or press a key combination. The button shows a grey `…` with a blue outline while waiting, previews the keys you press, and marks invalid shortcuts red. A valid shortcut is saved, the outline briefly flashes green, then returns to grey. Esc or clicking away cancels an unfinished change and restores the previous shortcut
+- Shortcut: tap `Right ⌥` to start and stop a recording, `Esc` discards it. A tap is a press and release under 0.6 s with no other modifier held and no key press or mouse click in between, so Option+letter typing is unaffected. Click the shortcut beside the status in the menu, then tap another modifier key or press a key combination. The button shows a grey `…` with a blue outline while waiting, previews the keys you press, and marks invalid shortcuts red. A valid shortcut is saved, the outline briefly flashes green, then returns to grey. Esc or clicking away cancels an unfinished change and restores the previous shortcut
 - Transcription runs while you speak: every pause of 0.8 s ends a segment and it is transcribed right away, so when you pause before stopping the text is already there
 - Floating pill while recording: a level meter on a -65 to -25 dBFS scale with 30 ms attack / 160 ms release smoothing; brief peaks are retained between display updates. Errors in the pill are kept short; the details are in `~/Library/Logs/Paraketto.log`
 - Text is pasted only if the app that had focus when you started still has it; otherwise it is only copied, and the pill says so. Dictating with Paraketto itself in front only copies the text
@@ -265,6 +265,8 @@ files already saved stay as they are.
 Rules live in `~/Library/Application Support/Paraketto/dictionary.json`.
 Dictionary changes are saved atomically before becoming active. A failed save leaves the
 previous rules active, and an unreadable dictionary is never silently overwritten.
+Change detection uses the same literal Unicode spelling as matching. The matcher is rebuilt
+only after rules load or a change is saved, then reused for subsequent transcripts.
 
 ## Speech recognition
 
@@ -308,9 +310,22 @@ Audio memory stays bounded: the recognizer discards consumed samples, retaining 
 next window's overlap and the incomplete VAD block. Capture writes a temporary Float32 WAV
 as audio arrives; the transcriber reads small batches from it. Only the latest file-length
 notification is queued, so inference lag accumulates on disk instead of in an audio queue.
+The disk feeder runs outside the main actor, leaving the interface free while it reads batches.
+Cancellation explicitly stops and drains that feeder before the recognizer is reused.
 The WAV takes about 3.84 MB of disk per minute and is deleted once its users release it,
 whether it was transcribed, cancelled or failed. Imports feed the file's samples straight to a
 session, with no copy on disk. Transcript tokens still grow with recording length.
+The live WAV is a temporary backlog buffer, not the old week-long recording history. Stopping
+capture finalizes its header and synchronizes the file; transcription reads the published samples
+through the shared file handle. The file is not moved into permanent storage.
+
+Live and file transcription both feed batches of at most 100 ms through the same session and pause rules.
+Each batch drains an autorelease pool so temporary Core ML/Foundation objects do not accumulate
+during a long file import with no run-loop yield. The final batch drains one too.
+VAD results for the current partial block are reused only when the sample count is unchanged,
+such as when a cut or finalization consults the same audio again. New audio still triggers a new
+evaluation at the normal cadence. Decoder state is not advanced after the last encoder frame,
+since that state is discarded at the segment boundary.
 
 VAD blocks end on whole 80 ms frames (14.96 s per complete block), so rounding each block
 does not accumulate a timestamp offset over long recordings. The encoder's maximum input remains 15 s.
@@ -330,6 +345,29 @@ drifts until whole segments decode to blanks.
 - **Empty windows are retried.** The model sometimes returns nothing at all for a window that
   starts mid-word (FluidAudio's own models do the same), so a window with speech that decodes
   empty is decoded again from a later start.
+
+### Performance review, 2026-11-06
+
+Measured in release builds on an M1 Max with 32 GB RAM and macOS 15.8.2, using the cached stock
+15 s encoder, separate decoder/joint models and bundled VAD. The fixture was 31.70 s of locally
+synthesized speech and silence, producing four segments. Times are medians of three warm runs;
+model loading and audio capture are excluded. The live simulation reads the temporary WAV in
+100 ms batches through the transcriber actor; it does not measure microphone or UI latency.
+
+| Measurement | Before this review | After |
+|---|---:|---:|
+| Disk-backed live simulation, including finish | 922 ms | 900 ms |
+| Remaining recognition work at stop | 115 ms | 104 ms |
+| File transcription, including audio reading | 938 ms | 885 ms |
+| Process peak resident memory across repeated live/file runs | 212.5 MB | 96.4 MB |
+
+Text, token ids, token frames and segment count matched the original implementation exactly on
+this fixture. VAD evaluations fell from 113 to 112 and decoder calls from 227 to 226 per run.
+The largest improvement was temporary-object lifetime, rather than fewer model calls. A separate
+101 s session checked bounded audio buffering; cancellation, recognizer reuse and short silence
+were also exercised. WAV finalization measured about 0.08 ms and remains synchronized.
+This synthetic fixture checks path consistency and resource use, not recognition accuracy across
+languages or a general speed guarantee. The historical LibriSpeech results below are separate.
 
 ### Faster than the stock export
 
@@ -387,9 +425,14 @@ keeps its JSON and recording for the next launch to try again. Nothing reads or 
 `history/archive/`.
 `~/Library/Logs/Paraketto.log` is truncated on each launch and never contains transcripts.
 
+Transcript filenames that collide get a numbered suffix. Creation refuses to overwrite an
+existing path, including one created by another writer after a filename was chosen.
+
 ## Tests and tools
 
 `master` holds only what builds and runs the app. The regression tests, the `paraketto-cli` runner,
 benchmarks and model exporters live on the `dev-tools` branch, which is `master` plus those files,
 and this document's copy there explains them. `git switch dev-tools && git merge master` brings it up
 to date. Never merge `dev-tools` into `master`.
+Some tests on `dev-tools` still use the removed history and transcript-editing APIs; merging
+the app changes also requires adapting those tests before the full suite can run.

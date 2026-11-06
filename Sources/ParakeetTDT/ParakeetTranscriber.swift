@@ -102,6 +102,9 @@ public final class ParakeetTranscriber {
         private var vadCache: [Float] = []
         private var vadFrameOffset = 0
         private var cachedBlocks = 0
+        /// Reuse the partial block when a cut or finish consults the same audio again.
+        private var partialVadSamples = -1
+        private var partialVad: [Float] = []
         /// Global frame where the next segment starts.
         private var segmentStart = 0
         /// Final tokens with their global frames.
@@ -133,7 +136,9 @@ public final class ParakeetTranscriber {
             for start in stride(from: 0, to: newSamples.count, by: 1600) {
                 samples.append(contentsOf: newSamples[start..<min(start + 1600, newSamples.count)])
                 peakBufferedSampleCount = max(peakBufferedSampleCount, samples.count)
-                try advance(final: false)
+                // File imports can run thousands of batches without yielding to a run loop.
+                // Release temporary Core ML/Foundation objects after each batch.
+                try autoreleasepool { try advance(final: false) }
                 discardConsumedAudio()
             }
         }
@@ -142,8 +147,10 @@ public final class ParakeetTranscriber {
         public func finish() throws -> Transcription {
             precondition(!finished, "session already finished")
             finished = true
-            defer { samples = []; vadCache = [] }
-            if totalSamples >= ParakeetConstants.minimumSamples { try advance(final: true) }
+            defer { samples = []; vadCache = []; partialVad = [] }
+            if totalSamples >= ParakeetConstants.minimumSamples {
+                try autoreleasepool { try advance(final: true) }
+            }
             let tokens = committed + provisional
             if DecodeProfile.enabled {
                 let ms = { (s: Double) in Int(s * 1000) }
@@ -215,7 +222,11 @@ public final class ParakeetTranscriber {
             }
             var result = vadCache
             if vadFrameOffset + result.count < limit, cachedBlocks * block < totalSamples {
-                result += try transcriber.speechProbabilities(block: samples[(cachedBlocks * block - sampleOffset)...])
+                if partialVadSamples != totalSamples {
+                    partialVad = try transcriber.speechProbabilities(block: samples[(cachedBlocks * block - sampleOffset)...])
+                    partialVadSamples = totalSamples
+                }
+                result += partialVad
             }
             vadSeconds += Date().timeIntervalSince(t0)
             if vadFrameOffset + result.count < limit { result += Array(repeating: 1, count: limit - vadFrameOffset - result.count) }

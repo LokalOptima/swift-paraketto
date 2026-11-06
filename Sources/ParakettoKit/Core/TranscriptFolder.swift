@@ -15,14 +15,18 @@ struct TranscriptFolder {
     func save(_ text: String, date: Date) throws -> URL {
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         let stamp = Self.filenameFormatter.string(from: date)
-        var file = url.appendingPathComponent("\(stamp).txt")
+        let data = Data((text + "\n").utf8)
         var copy = 1
-        while FileManager.default.fileExists(atPath: file.path) {
-            copy += 1
-            file = url.appendingPathComponent("\(stamp) \(copy).txt")
+        while true {
+            let name = copy == 1 ? stamp : "\(stamp) \(copy)"
+            let file = url.appendingPathComponent("\(name).txt")
+            do {
+                try data.write(to: file, options: .withoutOverwriting)
+                return file
+            } catch let error as CocoaError where error.code == .fileWriteFileExists {
+                copy += 1
+            }
         }
-        try (text + "\n").write(to: file, atomically: true, encoding: .utf8)
-        return file
     }
 
     private static let filenameFormatter: DateFormatter = {

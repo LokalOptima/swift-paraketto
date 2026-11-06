@@ -101,7 +101,9 @@ struct TdtDecoder {
             if duration == 0 && symbolsAtFrame >= ParakeetConstants.maxSymbolsPerFrame { duration = 1 }
             if duration > 0 { symbolsAtFrame = 0 }
             frame += duration
-            if let fusedStep, frame < frames.count {
+            // The segment's state is discarded after its last frame; no next decision needs it.
+            guard frame < frames.count else { break }
+            if let fusedStep {
                 // Advance the LSTM and decide the next frame in one call.
                 pending = try runFused(fusedStep, token: token, frame: frame, frames: frames, state: state)
             } else {

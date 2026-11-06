@@ -16,27 +16,27 @@ img{display:block;max-width:100%;height:auto;object-fit:contain}
 header,main,footer{width:min(1040px,calc(100% - 48px));margin:auto}
 header{height:88px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}
 .brand{display:flex;align-items:center;gap:11px;font-size:21px;font-weight:600;letter-spacing:-.6px;text-decoration:none}
-.brand img{width:34px;height:34px}
+.brand img{width:56px;height:56px}
 .github{display:grid;place-items:center;width:38px;height:38px;color:var(--muted);border-radius:8px}
 .github:hover{color:var(--text);background:var(--panel)}
 .github svg{width:23px;height:23px;fill:currentColor}
-.hero{display:grid;grid-template-columns:1.15fr 1fr;gap:60px;align-items:center;padding:76px 0 64px}
+.hero{display:grid;grid-template-columns:1.25fr 1fr;gap:60px;align-items:center;padding:32px 0 64px}
 .label{font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:var(--muted)}
 h1{font-size:clamp(43px,5.7vw,66px);font-weight:550;letter-spacing:-2.8px;line-height:1.06;margin:20px 0 22px}
 h1 span{color:var(--muted)}
-.hero p{font-size:16px;max-width:375px;color:var(--muted);margin:0 0 26px;line-height:1.7}
+.hero p{font-size:16px;max-width:475px;color:var(--muted);margin:0 0 26px;line-height:1.7}
 kbd{font:inherit;color:var(--text)}
 .download{display:inline-flex;align-items:center;gap:20px;background:var(--accent);color:#152014;padding:12px 18px;border-radius:7px;font-size:13px;font-weight:650;text-decoration:none}
 .requirements{font-size:11px;color:var(--muted);margin-top:15px}
 .hero>div{min-width:0}
 .install{margin-top:18px}
 .hero .install p{font-size:11px;line-height:1.5;max-width:none;margin:0 0 8px}
-.command{margin:0;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--text);font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;overflow-wrap:anywhere;user-select:all}
+.command{width:fit-content; margin:0;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--text);font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;overflow-wrap:anywhere;user-select:all}
 .command code{font:inherit}
 .preview{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px 20px}
 .preview img{flex:none;max-width:100%;height:auto}
 .feature{display:grid;grid-template-columns:.85fr 1.35fr;align-items:start;gap:65px;padding:52px 0;border-top:1px solid var(--line)}
-.feature h2{font-size:29px;font-weight:550;line-height:1.2;letter-spacing:-.9px;margin:12px 0 15px}
+.feature h2{font-size:39px;font-weight:550;line-height:1.2;letter-spacing:-.9px;margin:12px 0 15px}
 .feature p{font-size:15px;line-height:1.7;color:var(--muted);max-width:285px;margin:0}
 .screen{min-width:0;width:fit-content;max-width:100%;justify-self:center;display:flex;align-items:center;justify-content:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
 .screen img{max-width:100%;height:auto;flex:none}
@@ -60,16 +60,18 @@ footer a:hover{text-decoration:underline}
 <main>
   <section class="hero">
     <div>
-      <h1>One shortcut.<br></h1>
-      <p>Tap <kbd>Right Option</kbd>, speak, and tap again. Paraketto transcribes on your Mac and pastes where you’re writing.</p>
+      <h1>one Shortcut <br> + your Voice.<br></h1>
+      <p>Tap <kbd>Right Option</kbd>, speak, and tap again. <a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml">Parakeet Ultra</a> transcribes on your Mac and pastes where you’re writing.</p>
       <a class="download" href="https://github.com/LokalOptima/swift-paraketto/releases/latest/download/Paraketto.zip">Download for Mac <span aria-hidden="true">↓</span></a>
       <div class="install">
-        <p>Move Paraketto to Applications, then run in Terminal:</p>
+        <p>Then move Paraketto to Applications, and run in the Terminal:</p>
         <pre class="command"><code>xattr -dr com.apple.quarantine /Applications/Paraketto.app</code></pre>
       </div>
       <div class="requirements">Apple Silicon · macOS 14+ · Free & open source</div>
     </div>
+    <div class="screen">
     <img src="dark/menu-ready.png" width="276" height="133" alt="Paraketto’s compact menu, ready to dictate">
+    </div>
   </section>
   <section class="feature">
     <div><h2>Custom Dictionary.</h2><p>Correct recurring mishearings of names, technical terms, and phrases.</p></div>
@@ -80,6 +82,5 @@ footer a:hover{text-decoration:underline}
     <div class="screen"><img src="dark/dictionary-drop.png" width="536" height="424" alt="Drop audio files onto the Dictionary window"></div>
   </section>
 </main>
-<footer><span class="powered-by">Powered by <a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml">Parakeet Ultra Core ML</a></span></footer>
 </body>
 </html>

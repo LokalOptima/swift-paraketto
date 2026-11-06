@@ -386,7 +386,7 @@ The batch memory limits, VAD caching and off-main-thread live feeder apply to bo
 ## Website
 
 GitHub Pages publishes `docs/` from `master` at
-[Paraketto](https://lokaloptima.github.io/swift-paraketto/). Pushing changes to that branch
+[Paraketto](https://lokaloptima.dev/swift-paraketto/). Pushing changes to that branch
 updates the site through GitHub's built-in Pages publishing; no custom workflow or build is needed.
 
 Edit `docs/index.html` directly; the styles are inline, and the page also opens locally without

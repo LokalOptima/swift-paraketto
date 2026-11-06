@@ -18,14 +18,17 @@ Menu-bar dictation app for macOS: Parakeet Ultra on Core ML, with a SwiftUI and 
 
 When the user's certificate exists, `make bundle`, `make run` and Xcode builds sign with it, which can block on a keychain dialog on their screen. To check that code compiles, use `swift build`.
 
-This branch is `master` plus the tests and tooling. Update it with `git merge master`, and never merge it into `master`.
+Tests, `paraketto-cli`, benchmarks and the VAD exporter live on the `dev-tools` branch, which is `master` plus those files. To use them, run `git switch dev-tools && git merge master`. Never merge `dev-tools` into `master`.
+
+Optional multi-window encoder and fused decoder experiments, including their export tools,
+live on `optimizations`. Keep that branch separate from `master`, whose app loads
+only the stock models. The recent memory and responsiveness improvements apply to both.
 
 ## Rules
 
 - Audio and transcripts stay on the Mac, and `Log` never receives dictated text.
 - The `Paraketto Dev` certificate is for the user's own rebuilds and never goes to GitHub. Releases are signed with the separate `Paraketto Release` certificate, which exists only in the repository's secrets.
-- The history JSON `text` is the immutable original. Display text is derived from it and the dictionary.
-- Files in `transcripts/` are permanent, and only deleting a transcript in the app removes one. An entry leaves the Transcripts view, and its recording is deleted, only once its file is saved.
-- Keep `#Preview`s and their fixtures inside `#if DEBUG`. They use `PreviewFixtures`, never real history, models or hotkeys.
+- Files in `transcripts/` are permanent: the app writes each one once and never changes or removes it. Recordings are deleted once transcribed, and one left in `history/` by an earlier version only once its transcript has its file.
+- Keep `#Preview`s and their fixtures inside `#if DEBUG`. They use `PreviewFixtures`, never the real dictionary, transcripts, models or hotkeys.
 - In previewed files write `Button("Save") { save() }`, not `Button("Save", action: save)`. The second form silently breaks the canvas's Selectable mode.
 - After a source file is added or removed outside Xcode, `Paraketto.xcodeproj` must be reopened, or the canvas reports `Cannot find … in scope`.

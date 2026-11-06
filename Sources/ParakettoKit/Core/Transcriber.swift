@@ -31,14 +31,12 @@ actor Transcriber {
         // Keep the existing Ultra receipt so upgrades reuse its preparation history.
         let preparation = ModelPreparationRecord(
             directory: directory,
-            additionalModels: [store.ownEncoderURL, store.ownFusedDecoderURL].compactMap { $0 },
             recordURL: store.ownDirectory.deletingLastPathComponent()
                 .appendingPathComponent(".multi-preparation.json"))
         progress(preparation.isPrepared ? .loading : .optimizing)
         if vadModelURL == nil { Log.info("VadHead.mlmodelc not bundled; long recordings fall back to fixed windows") }
         // VadHead includes its own trained subsampler and detects pauses independently.
-        let models = try ParakeetModels(directory: directory, vadModel: vadModelURL, encoderModel: store.ownEncoderURL, fusedDecoder: store.ownFusedDecoderURL)
-        Log.info("encoder windows (mel frames): \(models.encoder.variants.map(\.melFrames))")
+        let models = try ParakeetModels(directory: directory, vadModel: vadModelURL)
         let transcriber = try ParakeetTranscriber(models: models)
         try transcriber.warmUp()
         do { try preparation.markPrepared() }
@@ -76,27 +74,18 @@ actor Transcriber {
         session = nil
     }
 
-    struct FileResult {
-        let text: String
-        let recording: RecordingFile
-        let inferenceMilliseconds: Int
-    }
-
     /// Runs on this actor, away from the UI; cancellation is checked between small batches.
     /// Uses a local session so a failed import cannot leave live dictation half initialized.
-    func transcribeFile(_ url: URL, progress: @escaping @Sendable (Double) -> Void) throws -> FileResult {
+    func transcribeFile(_ url: URL, progress: @escaping @Sendable (Double) -> Void) throws -> String {
         guard let transcriber else { throw TranscriberError.notLoaded }
         try Task.checkCancellation()
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         let reader = try AudioFileReader(url: url)
-        let recording = try RecordingFile()
         let session = transcriber.startSession()
-        let started = Date()
         var reported = -1.0
         while let samples = try reader.next() {
             try Task.checkCancellation()
-            try recording.append(samples)
             try session.append(samples)
             let fraction = min(reader.progress, 0.99)
             if fraction - reported >= 0.01 {
@@ -106,10 +95,8 @@ actor Transcriber {
         }
         try Task.checkCancellation()
         let text = try session.finish().text
-        try recording.finish()
         try Task.checkCancellation()
-        return FileResult(text: text, recording: recording,
-                          inferenceMilliseconds: Int(Date().timeIntervalSince(started) * 1000))
+        return text
     }
 
     enum TranscriberError: LocalizedError {

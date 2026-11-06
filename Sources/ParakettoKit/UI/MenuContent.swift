@@ -5,15 +5,18 @@ struct MenuContent: View {
     @ObservedObject private var shortcuts: ShortcutSettings
     private let isAccessibilityTrusted: () -> Bool
     private let isMicrophoneDenied: () -> Bool
+    private let canPostEvents: () -> Bool
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismiss) private var dismiss
 
     init(controller: DictationController, isAccessibilityTrusted: @escaping () -> Bool = { Paster.isAccessibilityTrusted },
-         isMicrophoneDenied: @escaping () -> Bool = { AudioRecorder.isMicrophoneDenied }) {
+         isMicrophoneDenied: @escaping () -> Bool = { AudioRecorder.isMicrophoneDenied },
+         canPostEvents: @escaping () -> Bool = { Paster.canPostEvents }) {
         self.controller = controller
         shortcuts = controller.shortcuts
         self.isAccessibilityTrusted = isAccessibilityTrusted
         self.isMicrophoneDenied = isMicrophoneDenied
+        self.canPostEvents = canPostEvents
     }
 
     var body: some View {
@@ -86,13 +89,20 @@ struct MenuContent: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 8)
                     .padding(.bottom, 4)
+            } else if !canPostEvents() {
+                Divider().padding(.vertical, 4)
+                Text("Quit and reopen Paraketto to enable pasting after granting Accessibility. Text is copied until then.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(8)
             }
 
             Divider().padding(.vertical, 4)
             Button {
-                controller.showTranscripts(using: openWindow)
+                controller.showDictionary(using: openWindow)
             } label: {
-                Text("Transcripts")
+                Text("Dictionary")
             }
 
             Divider().padding(.vertical, 4)
@@ -113,6 +123,7 @@ struct MenuContent: View {
     /// Why the shortcut can't dictate, although the app itself is ready.
     private var dictationBlocker: String? {
         if isMicrophoneDenied() { return "No mic access" }
+        if isAccessibilityTrusted(), !canPostEvents() { return "Reopen to paste" }
         return controller.isShortcutInUse ? "Shortcut in use" : nil
     }
 
@@ -131,13 +142,14 @@ struct MenuContent: View {
 #Preview("Ready") { MenuPreview(.idle) }
 #Preview("Needs Accessibility") { MenuPreview(.idle, isAccessibilityTrusted: false) }
 #Preview("Needs Microphone") { MenuPreview(.idle, isMicrophoneDenied: true) }
+#Preview("Reopen to paste") { MenuPreview(.idle, canPostEvents: false) }
 #Preview("Shortcut in use") { MenuPreview(.idle, isShortcutInUse: true) }
 #Preview("Downloading") { MenuPreview(.downloadingModel(0.42)) }
 #Preview("Optimizing") { MenuPreview(.optimizingModel) }
 #Preview("Loading") { MenuPreview(.loadingModel) }
 #Preview("Recording") { MenuPreview(.recording) }
 #Preview("Transcribing") { MenuPreview(.transcribing) }
-#Preview("Notice") { MenuPreview(.notice("Kept in history")) }
+#Preview("Notice") { MenuPreview(.notice("Copied")) }
 #Preview("Model failed") {
     MenuPreview(.failed("The network connection was lost."),
                 modelError: "Could not load model: The network connection was lost.")

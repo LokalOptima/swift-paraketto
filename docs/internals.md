@@ -7,17 +7,15 @@ pasted into whatever app has focus. Multilingual
 [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) runs on the Apple
 Neural Engine with Core ML. Audio and transcripts stay on the Mac.
 
-- Menu bar only. While the Transcripts window is open it also appears in Cmd-Tab, and in the Dock because macOS ties the two together
-- Shortcut: tap `Right ⌥` to start and stop a recording, `Esc` discards it. A tap is a press and release under 0.6 s with no other key in between, so Option+letter typing is unaffected. Click the shortcut beside the status in the menu, then tap another modifier key or press a key combination. The button shows a grey `…` with a blue outline while waiting, previews the keys you press, and marks invalid shortcuts red. A valid shortcut is saved, the outline briefly flashes green, then returns to grey. Esc or clicking away cancels an unfinished change and restores the previous shortcut
+- Menu bar only. While the Dictionary window is open it also appears in Cmd-Tab, and in the Dock because macOS ties the two together
+- Shortcut: tap `Right ⌥` to start and stop a recording, `Esc` discards it. A tap is a press and release under 0.6 s with no other modifier held and no key press or mouse click in between, so Option+letter typing is unaffected. Click the shortcut beside the status in the menu, then tap another modifier key or press a key combination. The button shows a grey `…` with a blue outline while waiting, previews the keys you press, and marks invalid shortcuts red. A valid shortcut is saved, the outline briefly flashes green, then returns to grey. Esc or clicking away cancels an unfinished change and restores the previous shortcut
 - Transcription runs while you speak: every pause of 0.8 s ends a segment and it is transcribed right away, so when you pause before stopping the text is already there
 - Floating pill while recording: a level meter on a -65 to -25 dBFS scale with 30 ms attack / 160 ms release smoothing; brief peaks are retained between display updates. Errors in the pill are kept short; the details are in `~/Library/Logs/Paraketto.log`
-- Text is pasted only if the app that had focus when you started still has it; otherwise it is kept in history. Dictating with Paraketto itself in front only copies the text
-- **Transcripts** (right-click the menu-bar icon, or choose Transcripts in its menu): the last 7 days of recordings grouped by day, with download, copy, delete, and word count stats. Entries show up to four lines; hover to reveal actions and expand longer text. The actions stay hidden while you scroll, so they don't flicker past a still pointer, and return 0.2 s after your fingers lift, without waiting for the glide to finish. With a mouse wheel, they return 0.2 s after the last notch. Delete asks first and quotes the start of the transcript, because it can't be undone and a glide can put a different row under the pointer. Download saves the recording as a WAV through a save dialog that starts in Downloads, because writing there directly would need a permission of its own
-- **Search** (top of Transcripts): finds text as shown in the last 7 days, ignoring case and accents, including stroked letters such as `ł` and `ø`. It starts at two characters, because a single letter would match nearly everything. Matches are highlighted, and each entry and the footer count them. An entry whose matches would fall past its fourth line shows excerpts sampled across them instead, still within four lines; expanding it shows the whole transcript with every match highlighted. A new dictation or a dropped file clears the search so its transcript isn't hidden
-- **Esc**: clears the search first, and cancels an import once the search is empty. During a dictation it discards the dictation, unless a text field holding text has focus, where it acts on that field
-- **Transcripts folder** (the button beside search): every transcript is also a plain text file in `~/Library/Application Support/Paraketto/transcripts/`, named by date and time and holding the text as shown. A transcript leaves the Transcripts view after 7 days, so search stays fast however many pile up. Its file stays and its recording is deleted, so a recording worth keeping has to be downloaded before then. Deleting a transcript in the app also deletes its file
-- **Dictionary** (the other tab in the same window): explicit, case-sensitive replacements with multiple spellings per target. Select transcript text and right-click to add one; underlines show replacements. Changes update every transcript in the Transcripts view from its original
-- Drop an audio file onto Transcripts to transcribe it locally, including WAV, M4A and AAC files supported by macOS
+- Text is pasted only if the app that had focus when you started still has it; otherwise it is only copied, and the pill says so. Dictating with Paraketto itself in front only copies the text
+- **Dictionary** (right-click the menu-bar icon, or choose Dictionary in its menu): explicit, case-sensitive replacements with multiple spellings per target, applied to each transcript before it is pasted. Search ignores case and accents, including stroked letters such as `ł` and `ø`
+- **Transcripts folder** (the button beside +): every transcript is also a plain text file in `~/Library/Application Support/Paraketto/transcripts/`, named by date and time and holding the text as it was pasted or copied. Paraketto never changes or removes these files. The recording is deleted once it is transcribed
+- Drop audio files onto the Dictionary window to transcribe them locally, including WAV, M4A and AAC files supported by macOS. The pill shows a progress bar for the whole batch in place of the meter, and each transcript gets its file as it is done. When the batch ends, or is cancelled, the clipboard holds all of them, separated by blank lines, and the pill says Copied. Files that fail, or hold no speech, are listed in the window, and the pill says Import failed if none worked
+- **Esc**: discards a dictation or cancels an import, from any app with Accessibility. A text field holding text, such as the search, takes it first, as do a popover and the menu
 - Supports 25 European languages with automatic detection, punctuation, and capitalization
 - The model downloads on first use (about 613 MB); existing compatible FluidAudio caches are reused
 
@@ -33,8 +31,8 @@ If setup fails, choose **Retry** in the menu.
 
 Model files are cached at `~/Library/Application Support/Paraketto/models/parakeet-ultra/`.
 Downloads are installed only after all required files arrive, so an interrupted download
-cannot leave a seemingly ready model. Existing compatible FluidAudio caches and optional
-locally optimized Ultra encoder and decoder exports are reused.
+cannot leave a seemingly ready model. Existing compatible FluidAudio caches are reused.
+The app loads the stock 15 s encoder and separate decoder and joint models.
 
 The command-line runner uses the same recognizer:
 
@@ -82,12 +80,15 @@ Other people download `Paraketto.zip` from a GitHub release instead of building.
 Silicon and macOS 14+, grant Microphone and Accessibility access, and download their own model on
 first use. The zip contains no recordings or transcripts.
 
-To release, raise `CFBundleShortVersionString` and `CFBundleVersion` in `Info.plist`, commit, push,
-and run `make release`. It refuses a commit that isn't pushed and a version that already exists, then
+For the first release, use the version already in `Info.plist`. For updates, raise
+`CFBundleShortVersionString` and `CFBundleVersion`. Commit, push to `master`, and run `make release`.
+It refuses a commit that isn't pushed and a version that already exists, then
 pushes the tag `v<version>`. The tag starts `.github/workflows/release.yml`, which runs `make dist` on
-a GitHub macOS runner and publishes the release with the zip. If that build fails, the tag stays
-without a release: delete it with `git push --delete origin v<version>`, fix the problem and run
-`make release` again. To test a change to the workflow without publishing, start it from the
+a GitHub macOS runner and publishes the release with the zip. Installation instructions are in
+the README; `.github/RELEASE_NOTES.md` provides the same instructions for a release description.
+The workflow checks that the tag's version matches `Info.plist`.
+If a build fails transiently, rerun it from Actions. If it needs a code change, fix it and release
+a new version. To test a change to the workflow without publishing, start it from the
 repository's Actions tab (**Release → Run workflow**), which builds and signs but doesn't publish.
 
 `make dist` builds the zip in `.build/dist` from a copy of the last commit, so uncommitted work stays
@@ -151,23 +152,22 @@ whole preview, and other previews can stop selecting as well.
 | File | Previews |
 |---|---|
 | `MenuContent.swift` | Ready, Needs Accessibility, Needs Microphone, Shortcut in use, Downloading, Optimizing, Loading, Recording, Transcribing, Notice, Model failed |
-| `PillView.swift` | Recording (with a live meter), Transcribing, Copied, Kept in history, Error, All messages |
+| `PillView.swift` | Recording (with a live meter), Transcribing, Importing, Copied, Error, All messages |
 | `ShortcutRecorder.swift` | All states, Interactive |
-| `TranscriptsView.swift` | Transcripts, Empty transcripts, Search, Search in a long transcript, Search without matches, Importing, Import failed, Importing with errors, Drop audio files, Drop while busy |
-| `DictionaryView.swift` | Dictionary, Empty dictionary |
-| `DictionaryEditor.swift` | Add replacement, Edit replacement, From a transcript, Adding to an existing target, Many spellings, Spelling already used |
+| `DictionaryView.swift` | Dictionary, Empty dictionary, Import failed, Drop audio files, Drop while busy |
+| `DictionaryEditor.swift` | Add replacement, Edit replacement, Adding to an existing target, Many spellings, Spelling already used |
 
-`PreviewFixtures.swift` supplies disposable sample dictionary entries, transcripts, and silent
-recordings. Each preview has separate temporary files and shortcut preferences; previews do
-not load recognition models, start recording, register shortcuts, read personal history, or
-write to the log. States reach the views through the debug-only `DictationController.showPreview`.
+`PreviewFixtures.swift` supplies disposable sample dictionary entries. Each preview has its own
+temporary dictionary, transcripts folder and shortcut preferences; previews do not load recognition
+models, start recording, register shortcuts, read the real dictionary or transcripts, or write to
+the log. States reach the views through the debug-only `DictationController.showPreview`.
 Preview declarations and fixtures are excluded from release builds.
 
 Xcode reads the package’s file list when it opens the project. After adding or removing a source
 file outside Xcode, close and reopen the project, or the canvas reports `Cannot find … in scope`.
 
 **Run** builds and launches the real `Paraketto.app` from Xcode’s build folder, with the debugger
-attached, its menu-bar icon and VAD model, and your real history, dictionary, and models. Quit
+attached, its menu-bar icon and VAD model, and your real dictionary, transcripts, and models. Quit
 any other running copy first, because both would answer the shortcut. The project signs ad-hoc, so
 anyone can build it. If the `Paraketto Dev` certificate described under
 [Accessibility and rebuilds](#accessibility-and-rebuilds) exists, the first Xcode build warns that it
@@ -188,7 +188,10 @@ in Applications.
 - **Accessibility**: needed to send the Cmd+V keystroke and to see `Esc` in other apps. Prompted at
   launch, granted in System Settings → Privacy & Security → Accessibility. Without it the transcript
   is only copied to the clipboard and `Esc` can't cancel a recording, which the menu explains under
-  **Grant Accessibility…**. Both are checked again at each recording.
+  **Grant Accessibility…**. After a grant, quit and reopen the app so event-posting permission
+  takes effect. If Accessibility is granted but posting is unavailable, the menu says
+  **Reopen to paste** and explains that transcripts are copied until then.
+  Microphone access is checked before recording; Accessibility and event posting are checked before pasting.
 
 The shortcut needs neither permission. Key combinations are Carbon hotkeys. A bare modifier tap relies
 on macOS delivering modifier changes to global monitors without Accessibility, which Apple does not
@@ -212,8 +215,9 @@ again.
 
 `AXIsProcessTrusted` updates while the app runs. Posting Cmd+V is a separate privilege under the same
 switch, and [Apple says](https://developer.apple.com/forums/thread/727984)
-`CGPreflightPostEventAccess` doesn't update until a relaunch. Whether pasting works straight after a
-first grant is untested, so the log records both at launch and at each delivery.
+`CGPreflightPostEventAccess` doesn't update until a relaunch. The app checks both privileges before
+claiming a paste was sent, and the log records both at launch and at each delivery. The first-grant
+instructions explicitly include reopening the app.
 
 ### Accessibility and rebuilds
 
@@ -242,16 +246,12 @@ is not trusted and text is only copied. Two ways out:
 
 ## Dictionary decisions
 
-The Transcripts and Dictionary tabs share one window. Each replacement has one or more explicit
-spellings to replace and the target text to write with them, with search and an add button.
-Selected transcript text can be added through **Add to dictionary…**; outer whitespace is
-trimmed and selections containing replacements map back to the original recognition text.
-Partial selections of a replacement cannot be added. Replacement underlines show the original
-wording on hover, with actions to edit the replacement or remove that spelling globally.
+Each replacement has one or more explicit spellings to replace and the target text to write with
+them. The Dictionary window lists them with search and an add button.
 
-The editor is a popover attached to the selected words, the add button or the row's pencil, so the
-sentence or list stays in view. **Replace** holds spellings as chips: a comma or Return finishes
-one, Delete in an empty field reopens the last, and clicking a chip reopens it. **With** suggests
+The editor is a popover attached to the add button or the row's pencil, so the list stays in view.
+**Replace** holds spellings as chips: a comma or Return finishes one, Delete in an empty field
+reopens the last, and clicking a chip reopens it. **With** suggests
 existing targets that have a word starting with the text; Tab takes the first, and the arrow keys
 and Return choose another. Typing an exact existing target adds to that replacement, whether adding
 or editing. One fixed status line shows suggestions, conflicts and what a save will join, so nothing
@@ -272,17 +272,15 @@ Emails, URLs, and paths are protected. Protection deliberately favors skipping a
 address-like tokens over modifying them; for example, `word.example` is protected even if it
 was intended as prose with a missing space.
 
-The existing history JSON `text` remains the immutable original recognition output, and WAV
-files are unchanged. Display text and replacement ranges are derived in memory from a single
-current dictionary snapshot. Every successful rule change synchronously reprocesses all
-transcripts in the Transcripts view from their originals, including on launch. Copy and new
-dictation delivery use the processed text; text already pasted into other apps is not changed.
-A transcript's text file follows the change while it is in the view, unless the file was edited,
-renamed or deleted since it was saved. Files of older transcripts stay as they are. Removing or
-editing a rule is the way to undo replacements globally; there is no separate Show original control.
+Replacements apply once, when a dictation or an import finishes: the pasted or copied text and the
+transcript's file hold the result, and the original recognition output isn't kept. A rule change,
+deleting one included, applies only to later transcripts: text already pasted into other apps and
+files already saved stay as they are.
 Rules live in `~/Library/Application Support/Paraketto/dictionary.json`.
 Dictionary changes are saved atomically before becoming active. A failed save leaves the
 previous rules active, and an unreadable dictionary is never silently overwritten.
+Change detection uses the same literal Unicode spelling as matching. The matcher is rebuilt
+only after rules load or a change is saved, then reused for subsequent transcripts.
 
 ## Speech recognition
 
@@ -297,7 +295,6 @@ with no package dependencies:
 | `ParakeetTranscriber.swift` | streaming sessions and mel → encoder → decode; about 1 s of context at pauses, 2 s of overlap on each side of cuts through speech |
 | `TdtDecoder.swift` | greedy Token-and-Duration Transducer loop with the 2-layer LSTM state |
 | `VoiceActivity.swift` | places cuts at pauses found by the model's own VAD head |
-| `EncoderSet.swift` | picks the shortest encoder window that holds a segment |
 | `MultiArray.swift` | small `MLMultiArray` helpers |
 
 The Ultra model files are FluidInference's Core ML conversion of moondream's checkpoint, which is
@@ -326,9 +323,22 @@ Audio memory stays bounded: the recognizer discards consumed samples, retaining 
 next window's overlap and the incomplete VAD block. Capture writes a temporary Float32 WAV
 as audio arrives; the transcriber reads small batches from it. Only the latest file-length
 notification is queued, so inference lag accumulates on disk instead of in an audio queue.
-At completion, the WAV moves into History without loading it into memory. Cancelled or
-failed recordings are removed when their users release the temporary file. Transcript
-tokens still grow with recording length. New recordings use about 3.84 MB of disk per minute.
+The disk feeder runs outside the main actor, leaving the interface free while it reads batches.
+Cancellation explicitly stops and drains that feeder before the recognizer is reused.
+The WAV takes about 3.84 MB of disk per minute and is deleted once its users release it,
+whether it was transcribed, cancelled or failed. Imports feed the file's samples straight to a
+session, with no copy on disk. Transcript tokens still grow with recording length.
+The live WAV is a temporary backlog buffer, not the old week-long recording history. Stopping
+capture finalizes its header and synchronizes the file; transcription reads the published samples
+through the shared file handle. The file is not moved into permanent storage.
+
+Live and file transcription both feed batches of at most 100 ms through the same session and pause rules.
+Each batch drains an autorelease pool so temporary Core ML/Foundation objects do not accumulate
+during a long file import with no run-loop yield. The final batch drains one too.
+VAD results for the current partial block are reused only when the sample count is unchanged,
+such as when a cut or finalization consults the same audio again. New audio still triggers a new
+evaluation at the normal cadence. Decoder state is not advanced after the last encoder frame,
+since that state is discarded at the segment boundary.
 
 VAD blocks end on whole 80 ms frames (14.96 s per complete block), so rounding each block
 does not accumulate a timestamp offset over long recordings. The encoder's maximum input remains 15 s.
@@ -349,49 +359,36 @@ drifts until whole segments decode to blanks.
   starts mid-word (FluidAudio's own models do the same), so a window with speech that decodes
   empty is decoded again from a later start.
 
-`tests/make_longform.py` joins the LibriSpeech clips into one to three minute files with 0.3 to 1 s
-gaps, and `tests/score.py` computes word error rate the Open ASR Leaderboard way: Whisper's
-EnglishTextNormalizer on both sides, then `jiwer`. `make compare` and `make longform` feed audio in
-100 ms chunks like the app. The table below records earlier development measurements;
-rerun those commands to measure the current build:
+### Performance review, 2026-11-06
 
-| Version | Long files | Short clips |
-|---|---|---|
-| state carried across cuts, 13 s windows | about 9% (counted before the scorer existed) | 0.20% |
-| pause commits, overlap join, fresh decoder | 0.20% | 0.20% |
+Measured in release builds on an M1 Max with 32 GB RAM and macOS 15.8.2, using the cached stock
+15 s encoder, separate decoder/joint models and bundled VAD. The fixture was 31.70 s of locally
+synthesized speech and silence, producing four segments. Times are medians of three warm runs;
+model loading and audio capture are excluded. The live simulation reads the temporary WAV in
+100 ms batches through the transcriber actor; it does not measure microphone or UI latency.
 
-Those runs included model errors such as "bade fare" for "bade fair" and "Murcheston". Pause
-decisions use only the audio heard so far, so feeding a whole file at once can cut differently
-(0.40% on the long files).
+| Measurement | Before this review | After |
+|---|---:|---:|
+| Disk-backed live simulation, including finish | 922 ms | 900 ms |
+| Remaining recognition work at stop | 115 ms | 104 ms |
+| File transcription, including audio reading | 938 ms | 885 ms |
+| Process peak resident memory across repeated live/file runs | 212.5 MB | 96.4 MB |
 
-### Faster than the stock export
+Text, token ids, token frames and segment count matched the original implementation exactly on
+this fixture. VAD evaluations fell from 113 to 112 and decoder calls from 227 to 226 per run.
+The largest improvement was temporary-object lifetime, rather than fewer model calls. A separate
+101 s session checked bounded audio buffering; cancellation, recognizer reuse and short silence
+were also exercised. WAV finalization measured about 0.08 ms and remains synchronized.
+This synthetic fixture checks path consistency and resource use, not recognition accuracy across
+languages or a general speed guarantee.
 
-Two optional exports, built locally with `uv` (they are too large for the repo) and picked up
-automatically by the app and CLI from `~/Library/Application Support/Paraketto/models/`:
+### Optional model experiments
 
-- `make encoder-export`: the encoder as one multi-function Core ML model with 5 s, 10 s and 15 s
-  windows (605 MB, weights shared), traced from Hugging Face `transformers`' `ParakeetForTDT` and
-  quantized to int8 per channel. A segment uses the shortest window that holds it, so a 4.5 s
-  utterance costs a 17 ms encoder pass instead of 55 ms. Needs macOS 15 for multi-function models.
-- `make decoder-export`: one Core ML model that advances the LSTM with the emitted token and
-  decides the next frame, replacing two framework calls per token step with one (35 MB).
-
-Historical measurements on the 17 LibriSpeech clips on an M1 Max, with the same transcripts
-in every configuration (these timings have not been remeasured for the current build):
-
-| Configuration | RTFx |
-|---|---|
-| FluidAudio models, two-call decode | 80x |
-| + fused decoder step | 93x |
-| + multi-window encoder | 124x |
-
-In those measurements, time was split between the encoder on the ANE (17 to 55 ms depending on window) and
-the sequential decode on the CPU: 0.73 ms per emitted token inside the fused step, bound by
-streaming the fp32 LSTM and joint weights through one core (Core ML's per-call floor is 35 µs, and
-smaller weights do not help because the CPU path expands them at load). A Metal decoder that ran
-the greedy loop on the GPU reached 182x with identical transcripts (commit `89c4e5e`), but hand-written
-kernels failed silently twice on the way there, and for dictation the 30 ms it saves on a 10 s
-utterance is below perception, so it was removed in favour of the framework path.
+The multi-window encoder, fused decoder, export tools and historical comparisons are preserved
+on `optimizations`. That branch includes `make encoder-export` and
+`make decoder-export`; its copy of this document explains their setup and tradeoffs.
+`master` uses one stock-model path and does not discover or load those optional exports.
+The batch memory limits, VAD caching and off-main-thread live feeder apply to both branches.
 
 ### Measuring
 
@@ -401,8 +398,7 @@ utterance is below perception, so it was removed in favour of the framework path
 - `paraketto-cli --plan` prints each model's operation count, how Core ML assigns operations to
   CPU, GPU and ANE, and which operators force the CPU.
 - `PARAKEET_TIMING=1` prints mel, encoder and decode time per recording, with the number and total
-  time of fused, joint and decoder Core ML calls; `--fused <model>` swaps in another fused step
-  export for A/B timing; `--chunk-ms N` feeds each file to a session in N ms chunks like the app
+  time of joint and decoder Core ML calls; `--chunk-ms N` feeds each file to a session in N ms chunks like the app
   and reports the time spent after the last chunk; `--tokens` prints each
   token with its frame; `--vad-probe` prints the VAD strip; `PARAKEET_DEBUG=1` logs every joint decision.
 
@@ -434,18 +430,39 @@ VAD strip, and `PARAKEET_DEBUG=1` logs every joint decision.
 ## Layout
 
 The application lives in the `ParakettoKit` library in `Sources/ParakettoKit`, so Xcode can preview
-its views: `UI` holds the views, and `Core` holds dictation control, audio, pasting, history and the
-dictionary. `Sources/ParakettoLauncher` contains only the entry point, shared by the SwiftPM executable
-and `Paraketto.xcodeproj`. Recognition is isolated in `Sources/ParakeetTDT`,
-and the CLI is in `Sources/ParakettoCLI`. `tests/swift` contains regression tests; `tools/export`
-contains optional model exporters and probes. Generated bundles, caches, local audio fixtures, and
-build/test artifacts are ignored. The source icon lives in `Resources`; `tools/make_icon.swift`
-generates the app icon and template menu-bar image together.
+its views: `UI` holds the views, and `Core` holds dictation control, audio, pasting, the transcripts
+folder and the dictionary. `Sources/ParakettoLauncher` contains only the entry point, shared by the
+SwiftPM executable and `Paraketto.xcodeproj`. Recognition is isolated in `Sources/ParakeetTDT`.
+Generated bundles and caches are ignored. The source icon lives in `Resources`;
+`tools/make_icon.swift` generates the app icon and template menu-bar image together.
 
-Each transcript in the Transcripts view is a JSON file and a WAV recording under
-`~/Library/Application Support/Paraketto/history/`, plus its text file in `transcripts/` next to it.
-A file that can't be saved is tried again every hour and on each launch, and the entry stays in the
-view until it is saved. After 7 days the WAV is deleted for good and the JSON, which holds the
-original text, moves to `history/archive/`, so that loading doesn't slow down as transcripts pile up.
-Nothing reads or removes that folder.
+Files dropped on the Dictionary window arrive through `FileDropArea`, an AppKit view that hosts the
+window's content, not through SwiftUI's `dropDestination`. With `dropDestination`, Finder's file icon
+stayed on screen for a moment after it was released over the window. AppKit removes it on release,
+before the drop is handled. AppKit offers a drop only to the view under the pointer and its
+ancestors, so the content has to be inside the drop view rather than beside it.
+
+Each transcript is a text file in `~/Library/Application Support/Paraketto/transcripts/`, written
+before the text is pasted. If it can't be written, a dictation is pasted anyway and the log records
+the failure, while an import lists it among its errors and still copies the text.
+
+Earlier versions also kept each transcript's original text as JSON and its recording as WAV in
+`history/` for 7 days, after which the JSON moved to `history/archive/`. At launch the app gives
+each transcript still in `history/` the text file it never got, if a save had failed, then moves its
+JSON to `history/archive/` and deletes the recordings. A transcript whose file can't be written
+keeps its JSON and recording for the next launch to try again. Nothing reads or removes
+`history/archive/`.
 `~/Library/Logs/Paraketto.log` is truncated on each launch and never contains transcripts.
+
+Transcript filenames that collide get a numbered suffix. Creation refuses to overwrite an
+existing path, including one created by another writer after a filename was chosen.
+
+## Tests and tools
+
+`master` holds only what builds and runs the app. The regression tests, the `paraketto-cli` runner,
+benchmarks and the VAD exporter live on the `dev-tools` branch, which is `master` plus those files,
+and this document's copy there explains them. `git switch dev-tools && git merge master` brings it up
+to date. Never merge `dev-tools` into `master`.
+Keep `optimizations` separate from `master` as well.
+Some tests on `dev-tools` still use removed history, transcript-editing and optional-model APIs; merging
+the app changes also requires adapting those tests before the full suite can run.

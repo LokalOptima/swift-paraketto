@@ -41,39 +41,22 @@ public enum ParakeetConstants {
 /// The four Core ML models of FluidAudio's export plus our VAD head and the vocabulary.
 public final class ParakeetModels {
     let preprocessor: MLModel
-    public let encoder: EncoderSet
+    let encoder: MLModel
     let decoder: MLModel
     let joint: MLModel
-    /// Decoder update and joint decision in one model (our export); nil falls back to two calls per token.
-    public let fusedStep: MLModel?
     let vad: MLModel?
     let vocabulary: Vocabulary
 
     /// The preprocessor runs on the CPU; everything else prefers the Neural Engine, as FluidAudio does.
-    /// - Parameter encoderModel: an alternative encoder (our multi-window export); nil uses the directory's.
-    public init(directory: URL, vadModel: URL?, encoderModel: URL? = nil, fusedDecoder: URL? = nil) throws {
+    public init(directory: URL, vadModel: URL?) throws {
         let cpu = MLModelConfiguration()
         cpu.computeUnits = .cpuOnly
         let ane = MLModelConfiguration()
         ane.computeUnits = .cpuAndNeuralEngine
-        // Experiment hook: PARAKEET_UNITS=cpu|gpu|all|ane picks the compute units for the decoder and joint.
-        let small = MLModelConfiguration()
-        switch ProcessInfo.processInfo.environment["PARAKEET_UNITS"] {
-        case "cpu": small.computeUnits = .cpuOnly
-        case "gpu": small.computeUnits = .cpuAndGPU
-        case "all": small.computeUnits = .all
-        default: small.computeUnits = .cpuAndNeuralEngine
-        }
-
         preprocessor = try Self.load(directory.appendingPathComponent("Preprocessor.mlmodelc"), cpu)
-        let encoderURL = encoderModel ?? directory.appendingPathComponent("Encoder.mlmodelc")
-        guard FileManager.default.fileExists(atPath: encoderURL.path) else {
-            throw ParakeetError.missingFile(encoderURL.lastPathComponent)
-        }
-        encoder = try EncoderSet(url: encoderURL, configuration: ane)
-        decoder = try Self.load(directory.appendingPathComponent("Decoder.mlmodelc"), small)
-        joint = try Self.load(directory.appendingPathComponent(ModelStore.jointFilename), small)
-        fusedStep = try fusedDecoder.map { try Self.load($0, small) }
+        encoder = try Self.load(directory.appendingPathComponent("Encoder.mlmodelc"), ane)
+        decoder = try Self.load(directory.appendingPathComponent("Decoder.mlmodelc"), ane)
+        joint = try Self.load(directory.appendingPathComponent(ModelStore.jointFilename), ane)
         vad = try vadModel.map { try Self.load($0, ane) }
         vocabulary = try Vocabulary(url: directory.appendingPathComponent("parakeet_v3_vocab.json"))
     }
@@ -94,7 +77,7 @@ struct Vocabulary {
         let table = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: url))
         var pieces = Array(repeating: "", count: table.count)
         for (id, piece) in table {
-            guard let index = Int(id), index < pieces.count else { continue }
+            guard let index = Int(id), pieces.indices.contains(index) else { continue }
             pieces[index] = piece
         }
         self.pieces = pieces

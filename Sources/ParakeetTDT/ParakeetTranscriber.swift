@@ -36,7 +36,7 @@ public final class ParakeetTranscriber {
     /// - Parameter commitPauseSeconds: silence that ends a segment while recording (0 waits for the window to fill).
     public init(models: ParakeetModels, commitPauseSeconds: Double = 0.8) throws {
         self.models = models
-        decoder = TdtDecoder(decoder: models.decoder, joint: models.joint, fusedStep: models.fusedStep)
+        decoder = TdtDecoder(decoder: models.decoder, joint: models.joint)
         var segmenter = Segmenter()
         segmenter.maximumSegmentFrames = Self.windowFrames - 2 * Self.overlapFrames
         segmenter.commitPauseFrames = Int((commitPauseSeconds / 0.08).rounded())
@@ -54,15 +54,10 @@ public final class ParakeetTranscriber {
     }
 
     /// Exercise model execution directly: normal transcription correctly skips silence.
-    /// Each encoder window is exercised without bypassing the recording's speech gate.
+    /// The encoder and decoder are exercised without bypassing the recording's speech gate.
     public func warmUp() throws {
-        for variant in models.encoder.variants {
-            // Keep the padded length inside this variant, including the extra mel frame.
-            let count = min((variant.melFrames - 1) * 160, ParakeetConstants.windowSamples)
-                / ParakeetConstants.samplesPerFrame * ParakeetConstants.samplesPerFrame
-            let samples = [Float](repeating: 0, count: count)
-            _ = try decoder.decode(encode(preprocess(samples[...])))
-        }
+        let samples = [Float](repeating: 0, count: Self.windowFrames * ParakeetConstants.samplesPerFrame)
+        _ = try decoder.decode(encode(preprocess(samples[...])))
         if let vad = models.vad {
             let mel = try preprocess([Float](repeating: 0, count: ParakeetConstants.windowSamples)[...])
             _ = try vad.prediction(from: MLDictionaryFeatureProvider(dictionary: ["mel": MLFeatureValue(multiArray: mel.mel)]))
@@ -102,6 +97,9 @@ public final class ParakeetTranscriber {
         private var vadCache: [Float] = []
         private var vadFrameOffset = 0
         private var cachedBlocks = 0
+        /// Reuse the partial block when a cut or finish consults the same audio again.
+        private var partialVadSamples = -1
+        private var partialVad: [Float] = []
         /// Global frame where the next segment starts.
         private var segmentStart = 0
         /// Final tokens with their global frames.
@@ -133,7 +131,9 @@ public final class ParakeetTranscriber {
             for start in stride(from: 0, to: newSamples.count, by: 1600) {
                 samples.append(contentsOf: newSamples[start..<min(start + 1600, newSamples.count)])
                 peakBufferedSampleCount = max(peakBufferedSampleCount, samples.count)
-                try advance(final: false)
+                // File imports can run thousands of batches without yielding to a run loop.
+                // Release temporary Core ML/Foundation objects after each batch.
+                try autoreleasepool { try advance(final: false) }
                 discardConsumedAudio()
             }
         }
@@ -142,8 +142,10 @@ public final class ParakeetTranscriber {
         public func finish() throws -> Transcription {
             precondition(!finished, "session already finished")
             finished = true
-            defer { samples = []; vadCache = [] }
-            if totalSamples >= ParakeetConstants.minimumSamples { try advance(final: true) }
+            defer { samples = []; vadCache = []; partialVad = [] }
+            if totalSamples >= ParakeetConstants.minimumSamples {
+                try autoreleasepool { try advance(final: true) }
+            }
             let tokens = committed + provisional
             if DecodeProfile.enabled {
                 let ms = { (s: Double) in Int(s * 1000) }
@@ -215,7 +217,11 @@ public final class ParakeetTranscriber {
             }
             var result = vadCache
             if vadFrameOffset + result.count < limit, cachedBlocks * block < totalSamples {
-                result += try transcriber.speechProbabilities(block: samples[(cachedBlocks * block - sampleOffset)...])
+                if partialVadSamples != totalSamples {
+                    partialVad = try transcriber.speechProbabilities(block: samples[(cachedBlocks * block - sampleOffset)...])
+                    partialVadSamples = totalSamples
+                }
+                result += partialVad
             }
             vadSeconds += Date().timeIntervalSince(t0)
             if vadFrameOffset + result.count < limit { result += Array(repeating: 1, count: limit - vadFrameOffset - result.count) }
@@ -369,10 +375,8 @@ public final class ParakeetTranscriber {
     }
 
     func encode(_ mel: Mel) throws -> EncoderFrames {
-        let variant = models.encoder.variant(forMelLength: mel.length.firstInt)
-        let input = try Self.slice(mel.mel, toFrames: variant.melFrames)
-        let output = try variant.model.prediction(from: MLDictionaryFeatureProvider(dictionary: [
-            "mel": MLFeatureValue(multiArray: input),
+        let output = try models.encoder.prediction(from: MLDictionaryFeatureProvider(dictionary: [
+            "mel": MLFeatureValue(multiArray: mel.mel),
             "mel_length": MLFeatureValue(multiArray: mel.length),
         ]))
         // The encoder reports one frame more than the audio covers at some lengths; FluidAudio caps it
@@ -396,18 +400,5 @@ public final class ParakeetTranscriber {
         var result = Array(UnsafeBufferPointer(start: probabilities.floatPointer, count: min(frames, probabilities.count)))
         if result.count < frames { result += Array(repeating: 1, count: frames - result.count) }
         return result
-    }
-
-    /// The first `frames` columns of a [1, 128, T] mel; the array itself when it already fits.
-    private static func slice(_ mel: MLMultiArray, toFrames frames: Int) throws -> MLMultiArray {
-        let shape = mel.shape.map(\.intValue)
-        guard shape.count == 3, shape[2] != frames else { return mel }
-        guard shape[2] > frames, mel.dataType == .float32 else { throw ParakeetError.unexpectedShape("mel", shape) }
-        let sliced = try MLMultiArray.float32([1, shape[1], frames])
-        let rowStride = mel.strides[1].intValue
-        for row in 0..<shape[1] {
-            (sliced.floatPointer + row * frames).update(from: mel.floatPointer + row * rowStride, count: frames)
-        }
-        return sliced
     }
 }

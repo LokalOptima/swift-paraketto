@@ -10,7 +10,7 @@ final class RecordingMeter: ObservableObject {
     @Published fileprivate(set) var elapsed: TimeInterval = 0
 }
 
-/// Owns the record → transcribe → paste loop and exposes state for the menu bar, overlay and history.
+/// Owns the record → transcribe → paste loop and exposes state for the menu bar, overlay and Dictionary window.
 @MainActor
 final class DictationController: ObservableObject {
     enum State: Equatable {
@@ -60,7 +60,11 @@ final class DictationController: ObservableObject {
     }
 
     @Published private(set) var state: State = .loadingModel {
-        didSet { if state != oldValue, !isPreview { Log.info("state: \(state.label)") } }
+        didSet {
+            noticeTask?.cancel()
+            noticeTask = nil
+            if state != oldValue, !isPreview { Log.info("state: \(state.label)") }
+        }
     }
     /// Set for Xcode's canvas, which must not write to the user's log or load models.
     private var isPreview = false
@@ -76,7 +80,11 @@ final class DictationController: ObservableObject {
     struct FileImportStatus {
         let id = UUID()
         let filename: String
+        /// Where this file sits in its batch, so the pill's bar covers the whole batch.
+        var index = 0
+        var count = 1
         var progress: Double = 0
+        var batchProgress: Double { (Double(index) + progress) / Double(max(count, 1)) }
     }
     @Published private(set) var fileImport: FileImportStatus?
     @Published private(set) var importErrors: [String] = []
@@ -85,14 +93,10 @@ final class DictationController: ObservableObject {
     var canImportFiles: Bool {
         isModelReady && !isLoadingModel && !isStartingRecording && state.canStartRecording && importTask == nil
     }
-
-    enum WindowTab: Hashable { case transcripts, dictionary }
-
-    /// Set while the menu is open, so showing Transcripts can close it from any route.
+    /// Set while the menu is open, so showing the Dictionary can close it from any route.
     var closeMenu: (() -> Void)?
-    @Published var windowTab: WindowTab = .transcripts
     let dictionary: DictionaryStore
-    let history: HistoryStore
+    let transcripts: TranscriptFolder
     let shortcuts: ShortcutSettings
 
     private static let noticeDuration: Duration = .seconds(2)
@@ -110,20 +114,21 @@ final class DictationController: ObservableObject {
     private var recordingStarted = Date()
     private var destination: Destination?
     private var transcription: Task<Void, Never>?
+    private var noticeTask: Task<Void, Never>?
     /// Coalesces file-length notifications; audio stays on disk if inference falls behind.
     private var audioStream: AsyncStream<Int>.Continuation?
     private var feeder: Task<Void, Never>?
 
-    init(dictionary: DictionaryStore? = nil, historyDirectory: URL? = nil, shortcuts: ShortcutSettings? = nil) {
-        let dictionary = dictionary ?? DictionaryStore()
-        self.dictionary = dictionary
+    init(dictionary: DictionaryStore? = nil, transcripts: TranscriptFolder? = nil, shortcuts: ShortcutSettings? = nil) {
+        self.dictionary = dictionary ?? DictionaryStore()
+        self.transcripts = transcripts ?? TranscriptFolder()
         self.shortcuts = shortcuts ?? ShortcutSettings()
-        history = HistoryStore(directory: historyDirectory, dictionary: dictionary)
     }
 
     func start() {
         Log.startSession()
         Log.info("launch, log at \(Log.fileURL.path), \(Paster.eventAccessSummary)")
+        LegacyHistory.clear(into: transcripts, dictionary: dictionary)
         overlay = Overlay(controller: self)
         recorder.onRMS = { [weak self] rms in
             Task { @MainActor in self?.smoother.update(rms: rms) }
@@ -211,44 +216,59 @@ final class DictationController: ObservableObject {
         Task { await loadModel() }
     }
 
-    /// Finder drops process a batch in order, sharing the loaded recognizer.
+    /// Finder drops process a batch in order, sharing the loaded recognizer, while the pill shows how
+    /// far the batch has got and Esc cancels it, as during a dictation. Each transcript gets its file
+    /// as it is done. The clipboard is set once, when the batch ends or is cancelled, so it isn't taken
+    /// over again with every file: it then holds every transcript so far, separated by blank lines.
     @discardableResult
     func importFiles(_ urls: [URL]) -> Bool {
         guard canImportFiles, !urls.isEmpty, urls.allSatisfy(\.isFileURL) else { return false }
         state = .transcribing
-        overlay?.hide()
         importErrors = []
-        fileImport = FileImportStatus(filename: urls[0].lastPathComponent)
+        fileImport = FileImportStatus(filename: urls[0].lastPathComponent, count: urls.count)
+        overlay?.show()
+        watchEscape()
         importTask = Task {
-            defer {
-                fileImport = nil
-                importTask = nil
-                state = .idle
-            }
             await feeder?.value
-            for url in urls {
-                guard !Task.isCancelled else { return }
-                let status = FileImportStatus(filename: url.lastPathComponent)
+            var texts: [String] = []
+            for (index, url) in urls.enumerated() {
+                guard !Task.isCancelled else { break }
+                let status = FileImportStatus(filename: url.lastPathComponent, index: index, count: urls.count)
                 fileImport = status
                 do {
-                    let result = try await transcriber.transcribeFile(url) { [weak self] fraction in
+                    let original = try await transcriber.transcribeFile(url) { [weak self] fraction in
                         Task { @MainActor in
                             guard let self, self.fileImport?.id == status.id else { return }
                             self.fileImport?.progress = fraction
                         }
                     }
                     try Task.checkCancellation()
-                    let entry = HistoryEntry(id: UUID(), date: Date(), text: result.text,
-                                             destination: "", duration: result.recording.duration,
-                                             inferenceMilliseconds: result.inferenceMilliseconds,
-                                             delivery: .imported, sourceFilename: url.lastPathComponent)
-                    try history.add(entry, recording: result.recording)
+                    guard !original.isEmpty else {
+                        importErrors.append("\(url.lastPathComponent): No speech detected.")
+                        continue
+                    }
+                    let text = dictionary.apply(to: original)
+                    texts.append(text)
+                    try transcripts.save(text, date: Date())
                 } catch is CancellationError {
-                    return
+                    break
                 } catch {
-                    guard !Task.isCancelled else { return }
+                    guard !Task.isCancelled else { break }
                     importErrors.append("\(url.lastPathComponent): \(error.localizedDescription)")
                 }
+            }
+            let cancelled = Task.isCancelled
+            stopWatchingEscape()
+            fileImport = nil
+            importTask = nil
+            // The pill says how it ended; which files failed, and why, is in the window.
+            if texts.isEmpty {
+                if cancelled || importErrors.isEmpty { returnToIdle() } else { show(.failed("Import failed")) }
+            } else if Paster.copy(texts.joined(separator: "\n\n")) {
+                show(.notice("Copied"))
+            } else {
+                importErrors.append(Paster.DeliveryError.clipboardUnavailable.localizedDescription)
+                show(.failed("Copy failed"))
             }
         }
         return true
@@ -285,7 +305,9 @@ final class DictationController: ObservableObject {
                 audioStream = continuation
                 recorder.onProgress = { continuation.yield($0) }
                 let recording = try recorder.start()
-                feeder = Task { [transcriber] in
+                // Disk reads must not inherit the controller's main actor. Cancellation is
+                // explicit: discardSession cancels this task and waits before reusing the recognizer.
+                feeder = Task.detached(priority: .userInitiated) { [transcriber] in
                     var consumed = 0
                     do {
                         for await available in stream {
@@ -350,24 +372,13 @@ final class DictationController: ObservableObject {
                     returnToIdle()
                     return
                 }
-                // Keep the original and audio even if paste delivery fails or is cancelled.
-                let entry = HistoryEntry(
-                    id: UUID(), date: recordingStarted, text: text,
-                    destination: destination?.name ?? "", duration: duration,
-                    inferenceMilliseconds: inferenceMilliseconds, delivery: .keptInHistory
-                )
-                try history.add(entry, recording: recording)
-                let outcome = try await Paster.deliver(history.process(text).text, to: destination)
+                let delivered = dictionary.apply(to: text)
+                // Saved before the paste so it is kept whatever happens there, but only the paste needs to succeed.
+                do { try transcripts.save(delivered, date: recordingStarted) }
+                catch { Log.info("Could not save a transcript's text file: \(error.localizedDescription)") }
+                let outcome = try await Paster.deliver(delivered, to: destination)
                 Log.info("delivery: \(outcome), \(Paster.eventAccessSummary)")
-                try history.updateDelivery(id: entry.id, to: delivery(for: outcome))
-                switch outcome {
-                case .pasted:
-                    returnToIdle()
-                case .copiedOnly:
-                    show(.notice("Copied"))
-                case .destinationChanged:
-                    show(.notice("Kept in history"))
-                }
+                if outcome == .pasted { returnToIdle() } else { show(.notice("Copied")) }
             } catch is CancellationError {
                 return
             } catch {
@@ -378,35 +389,13 @@ final class DictationController: ObservableObject {
         }
     }
 
-    private func delivery(for outcome: Paster.Outcome) -> HistoryEntry.Delivery {
-        switch outcome {
-        case .pasted: return .pasted
-        case .copiedOnly: return .copied
-        case .destinationChanged: return .keptInHistory
-        }
-    }
-
     /// Watches for Escape and starts the meter/elapsed ticker for the duration of a dictation.
     private func startSession() {
         recordingStarted = Date()
         meter.elapsed = 0
         smoother.reset()
         meter.level = 0
-        // Passive monitors rather than a Carbon hotkey: registering a hotkey while ⌃⌥Space is
-        // physically held makes Carbon drop that key's release event, which left recordings stuck.
-        // The global monitor needs Accessibility and misses this app's own windows, hence the local
-        // one, which consumes the key so that one press never also acts on the window.
-        escapeMonitors = [
-            NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard event.isEscape else { return }
-                Task { @MainActor in self?.cancel() }
-            },
-            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard event.isEscape, !Self.escapeBelongsToField(event.window?.firstResponder) else { return event }
-                Task { @MainActor in self?.cancel() }
-                return nil
-            },
-        ].compactMap { $0 }
+        watchEscape()
         meterTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: Self.meterInterval)
@@ -420,6 +409,36 @@ final class DictationController: ObservableObject {
         }
     }
 
+    /// Passive monitors rather than a Carbon hotkey: registering a hotkey while ⌃⌥Space is
+    /// physically held makes Carbon drop that key's release event, which left recordings stuck.
+    /// The global monitor needs Accessibility and misses this app's own windows, hence the local
+    /// one, which consumes the key so that one press never also acts on the window.
+    private func watchEscape() {
+        escapeMonitors = [
+            NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard event.isEscape else { return }
+                Task { @MainActor in self?.cancel() }
+            },
+            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard event.isEscape, !Self.escapeBelongsToWindow(event.window) else { return event }
+                Task { @MainActor in self?.cancel() }
+                return nil
+            },
+        ].compactMap { $0 }
+    }
+
+    private func stopWatchingEscape() {
+        for monitor in escapeMonitors { NSEvent.removeMonitor(monitor) }
+        escapeMonitors = []
+    }
+
+    /// Popovers and the menu can't become main, and close on Esc, which matters as an import can run
+    /// while the dictionary editor is open.
+    static func escapeBelongsToWindow(_ window: NSWindow?) -> Bool {
+        guard let window else { return false }
+        return !window.canBecomeMain || escapeBelongsToField(window.firstResponder)
+    }
+
     /// Esc in a text field holding text is about that text, such as clearing a search, not about the dictation.
     static func escapeBelongsToField(_ responder: NSResponder?) -> Bool {
         guard let editor = responder as? NSTextView else { return false }
@@ -427,8 +446,7 @@ final class DictationController: ObservableObject {
     }
 
     private func finishSession() {
-        for monitor in escapeMonitors { NSEvent.removeMonitor(monitor) }
-        escapeMonitors = []
+        stopWatchingEscape()
         meterTask?.cancel()
         meterTask = nil
     }
@@ -452,11 +470,11 @@ final class DictationController: ObservableObject {
     private func show(_ transient: State) {
         state = transient
         overlay?.show()
-        overlay?.hide(after: Self.noticeDuration)
-        Task { [weak self] in
-            try? await Task.sleep(for: Self.noticeDuration)
-            guard let self, self.state == transient else { return }
-            self.state = .idle
+        noticeTask = Task { [weak self] in
+            do { try await Task.sleep(for: Self.noticeDuration) }
+            catch { return }
+            guard !Task.isCancelled else { return }
+            self?.returnToIdle()
         }
     }
 }

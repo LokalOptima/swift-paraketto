@@ -1,23 +1,43 @@
+import AppKit
 import SwiftUI
 
+/// The replacements with search, the folder of all transcripts, and audio files dropped to be transcribed.
 struct DictionaryView: View {
+    @ObservedObject var controller: DictationController
     @ObservedObject var store: DictionaryStore
     @State private var query = ""
     @State private var newDraft: DictionaryDraft?
     @State private var deletion: DictionaryRule?
     @State private var error: String?
+    @State private var isDropTargeted = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(controller: DictationController) {
+        self.controller = controller
+        store = controller.dictionary
+    }
 
     private var filtered: [DictionaryRule] {
         let search = query.trimmingCharacters(in: .whitespacesAndNewlines)
         return store.rules.filter { rule in
-            search.isEmpty || ([rule.target] + rule.aliases).contains { !TextSearch.matches(of: search, in: $0).isEmpty }
+            search.isEmpty || ([rule.target] + rule.aliases).contains { TextSearch.contains(search, in: $0) }
         }.sorted { $0.target.localizedStandardCompare($1.target) == .orderedAscending }
     }
 
     var body: some View {
+        FileDropArea(isTargeted: { isDropTargeted = $0 }, drop: { controller.importFiles($0) }, content: AnyView(content))
+            .frame(minWidth: 500, minHeight: 380)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(nsColor: .textBackgroundColor).ignoresSafeArea())
+            .toolbarBackground(.hidden, for: .windowToolbar)
+    }
+
+    private var content: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 SearchField(prompt: "Search dictionary", text: $query)
+                    // While focused, the field would take a dropped file for itself and insert its path.
+                    .disabled(isDropTargeted)
                 Button { newDraft = DictionaryDraft(rule: DictionaryRule(target: "", aliases: [])) } label: {
                     Image(systemName: "plus").frame(width: 16, height: 16)
                 }
@@ -25,10 +45,16 @@ struct DictionaryView: View {
                 .help("Add replacement").accessibilityLabel("Add replacement")
                 .disabled(store.loadError != nil)
                 .popover(item: $newDraft, arrowEdge: .bottom) { DictionaryEditor(store: store, draft: $0) }
+                Button { openTranscriptsFolder() } label: {
+                    Image(systemName: "folder").frame(width: 16, height: 16)
+                }
+                .buttonStyle(.bordered)
+                .help("Open the folder with all transcripts").accessibilityLabel("Open the folder with all transcripts")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             Divider()
+            importErrors
             Group {
                 if let error = store.loadError {
                     Text(error).foregroundStyle(.secondary).padding(24)
@@ -63,7 +89,17 @@ struct DictionaryView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Color(nsColor: .textBackgroundColor))
+        .overlay {
+            if isDropTargeted {
+                AudioFileDropOverlay(isAvailable: controller.canImportFiles)
+                    .padding(12)
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.97)))
+                    .allowsHitTesting(false)
+            }
+        }
+        .animation(.easeOut(duration: reduceMotion ? 0 : 0.16), value: isDropTargeted)
+        // During an import the controller takes Esc unless the search holds text, so this clears it first.
+        .onExitCommand { query = "" }
         .confirmationDialog("Delete this replacement?", isPresented: Binding(get: { deletion != nil }, set: { if !$0 { deletion = nil } }), titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 guard let deletion else { return }
@@ -71,10 +107,33 @@ struct DictionaryView: View {
                 catch { self.error = error.localizedDescription }
                 self.deletion = nil
             }
-        } message: { Text("All transcripts will be reprocessed from their originals.") }
+        } message: { Text("Transcripts already saved stay as they are.") }
         .alert("Could not update dictionary", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("OK") { error = nil }
         } message: { Text(error ?? "") }
+    }
+
+    /// Progress shows in the pill; what went wrong with which file needs the room here.
+    @ViewBuilder private var importErrors: some View {
+        if !controller.importErrors.isEmpty {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(controller.importErrors, id: \.self) { error in
+                        Text(error).foregroundStyle(.red).textSelection(.enabled)
+                    }
+                }
+                Spacer()
+                Button("Dismiss") { controller.dismissImportErrors() }
+            }
+            .padding()
+            Divider()
+        }
+    }
+
+    private func openTranscriptsFolder() {
+        // Nothing may have been saved yet, or the folder may have been removed.
+        try? FileManager.default.createDirectory(at: controller.transcripts.url, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(controller.transcripts.url)
     }
 }
 
@@ -108,12 +167,49 @@ private struct DictionaryRow: View {
     }
 }
 
+/// Appears only while dragging over the window; there is no persistent import prompt.
+struct AudioFileDropOverlay: View {
+    let isAvailable: Bool
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 16)
+            .fill(.regularMaterial)
+            .overlay {
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(isAvailable ? Color.accentColor : Color.secondary,
+                                  style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
+            }
+            .overlay {
+                VStack(spacing: 12) {
+                    Image(systemName: isAvailable ? "arrow.down.doc" : "hourglass")
+                        .font(.system(size: 38, weight: .light))
+                    Text(isAvailable ? "Drop audio files here" : "Paraketto is busy")
+                        .font(.title3.weight(.semibold))
+                }
+                .foregroundStyle(isAvailable ? Color.accentColor : Color.secondary)
+            }
+    }
+}
+
 #if DEBUG
 #Preview("Dictionary") {
-    LibraryPreview(tab: .dictionary)
+    DictionaryPreview()
 }
 
 #Preview("Empty dictionary") {
-    LibraryPreview(tab: .dictionary, empty: true)
+    DictionaryPreview(empty: true)
+}
+
+#Preview("Import failed") {
+    DictionaryPreview(importErrors: ["Team meeting.m4a: The operation could not be completed.",
+                                     "Voice memo.m4a: No speech detected."])
+}
+
+#Preview("Drop audio files") {
+    DictionaryPreview().overlay { AudioFileDropOverlay(isAvailable: true).padding(12) }
+}
+
+#Preview("Drop while busy") {
+    DictionaryPreview().overlay { AudioFileDropOverlay(isAvailable: false).padding(12) }
 }
 #endif

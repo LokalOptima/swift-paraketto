@@ -46,17 +46,6 @@ public struct ModelStore {
         return ownDirectory
     }
 
-    /// Optional locally optimized Ultra exports.
-    public var ownEncoderURL: URL? {
-        let url = ownDirectory.deletingLastPathComponent().appendingPathComponent("parakeet-ultra-encoder/Encoder.mlmodelc")
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
-    }
-
-    public var ownFusedDecoderURL: URL? {
-        let url = ownDirectory.deletingLastPathComponent().appendingPathComponent("parakeet-ultra-decoder/DecoderJoint.mlmodelc")
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
-    }
-
     private struct Sibling: Decodable {
         let rfilename: String
         let size: Int64

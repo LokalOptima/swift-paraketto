@@ -6,7 +6,7 @@ struct DictionaryDraft: Identifiable {
     var rule: DictionaryRule
 }
 
-/// Edits one replacement inside a popover, so the transcript or list it came from stays in view.
+/// Edits one replacement inside a popover, so the list stays in view.
 struct DictionaryEditor: View {
     private enum Field { case aliases, target }
 
@@ -50,7 +50,7 @@ struct DictionaryEditor: View {
         }
         .padding(16)
         .frame(width: 380)
-        .onAppear { focus = form.target.isEmpty && !form.aliases.isEmpty ? .target : .aliases }
+        .onAppear { focus = .aliases }
         .onChange(of: focus) { old, _ in
             if old == .aliases { form.commitPendingAlias() }
         }
@@ -197,7 +197,7 @@ struct DictionaryEditor: View {
     }
 }
 
-/// The outline shared by the editor's fields and the search fields.
+/// The outline shared by the editor's fields and the search field.
 struct OutlinedField<Content: View>: View {
     var isFocused = false
     @ViewBuilder let content: Content
@@ -215,7 +215,7 @@ struct OutlinedField<Content: View>: View {
     }
 }
 
-/// The search box shared by the Transcripts and Dictionary tabs.
+/// The Dictionary window's search box.
 struct SearchField: View {
     let prompt: String
     @Binding var text: String
@@ -319,10 +319,6 @@ private extension Array {
 
 #Preview("Edit replacement") {
     DictionaryEditorPreview(editing: true)
-}
-
-#Preview("From a transcript") {
-    DictionaryEditorPreview(aliases: ["cloud code"])
 }
 
 #Preview("Adding to an existing target") {

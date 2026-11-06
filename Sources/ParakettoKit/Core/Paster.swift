@@ -29,10 +29,12 @@ enum Paster {
         AXIsProcessTrusted()
     }
 
+    static var canPostEvents: Bool { CGPreflightPostEventAccess() }
+
     /// For the log. System Settings shows these as one switch, but macOS tracks them separately,
     /// and the second may not update until the app is reopened.
     static var eventAccessSummary: String {
-        "accessibility \(isAccessibilityTrusted), post events \(CGPreflightPostEventAccess())"
+        "accessibility \(isAccessibilityTrusted), post events \(canPostEvents)"
     }
 
     /// Shows the one-time system prompt if Accessibility has not been granted yet.
@@ -61,16 +63,21 @@ enum Paster {
         var copy: (String) -> Bool
         var destination: () -> Destination?
         var accessibilityTrusted: () -> Bool
+        var canPostEvents: () -> Bool = { true }
         var waitForModifiers: () async throws -> Bool
         var paste: () -> Bool
 
         static var live: Operations {
-            Operations(copy: { text in
-                NSPasteboard.general.clearContents()
-                return NSPasteboard.general.setString(text, forType: .string)
-            }, destination: { Destination.frontmost }, accessibilityTrusted: { isAccessibilityTrusted },
+            Operations(copy: Paster.copy, destination: { Destination.frontmost }, accessibilityTrusted: { isAccessibilityTrusted },
+                       canPostEvents: { Paster.canPostEvents },
                        waitForModifiers: waitForModifiersReleased, paste: sendCommandV)
         }
+    }
+
+    /// Replaces whatever the clipboard held.
+    static func copy(_ text: String) -> Bool {
+        NSPasteboard.general.clearContents()
+        return NSPasteboard.general.setString(text, forType: .string)
     }
 
     @MainActor
@@ -80,13 +87,13 @@ enum Paster {
         guard operations.copy(text) else { throw DeliveryError.clipboardUnavailable }
         guard let destination else { return .copiedOnly }
         guard operations.destination() == destination else { return .destinationChanged }
-        guard operations.accessibilityTrusted() else { return .copiedOnly }
+        guard operations.accessibilityTrusted(), operations.canPostEvents() else { return .copiedOnly }
 
         let released = try await operations.waitForModifiers()
         try Task.checkCancellation()
         // Focus may change during the wait. Recheck immediately before sending any keys.
         guard operations.destination() == destination else { return .destinationChanged }
-        guard released, operations.paste() else { return .copiedOnly }
+        guard released, operations.canPostEvents(), operations.paste() else { return .copiedOnly }
         return .pasted
     }
 
@@ -108,6 +115,7 @@ enum Paster {
     }
 
     private static func sendCommandV() -> Bool {
+        guard canPostEvents else { return false }
         let source = CGEventSource(stateID: .combinedSessionState)
         let keyV = CGKeyCode(kVK_ANSI_V)
         guard let down = CGEvent(keyboardEventSource: source, virtualKey: keyV, keyDown: true),

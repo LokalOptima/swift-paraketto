@@ -13,7 +13,6 @@ final class Overlay {
     static let pillSize = CGSize(width: 160, height: 40)
 
     private let panel: NSPanel
-    private var hideTask: Task<Void, Never>?
 
     init(controller: DictationController) {
         panel = NSPanel(
@@ -36,22 +35,12 @@ final class Overlay {
     }
 
     func show() {
-        hideTask?.cancel()
         position()
         panel.orderFrontRegardless()
     }
 
-    func hide(after delay: Duration = .zero) {
-        hideTask?.cancel()
-        guard delay > .zero else {
-            panel.orderOut(nil)
-            return
-        }
-        hideTask = Task { [weak self] in
-            try? await Task.sleep(for: delay)
-            guard !Task.isCancelled else { return }
-            self?.panel.orderOut(nil)
-        }
+    func hide() {
+        panel.orderOut(nil)
     }
 
     private func position() {

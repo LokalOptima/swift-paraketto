@@ -41,7 +41,7 @@ final class ModifierTap {
 
     /// Key presses and clicks so far in this login session. Reading the count needs no permission.
     nonisolated static func systemInputCount() -> UInt32 {
-        let types: [CGEventType] = [.keyDown, .leftMouseDown, .rightMouseDown]
+        let types: [CGEventType] = [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
         return types.reduce(0) { $0 &+ CGEventSource.counterForEventType(.combinedSessionState, eventType: $1) }
     }
 
@@ -54,7 +54,8 @@ final class ModifierTap {
         if event.modifierFlags.contains(flag) {
             pressedAt = Date()
             inputCountAtPress = inputCount()
-            interrupted = false
+            interrupted = !event.modifierFlags.intersection([.command, .option, .control, .shift, .function])
+                .subtracting(flag).isEmpty
         } else if let pressedAt {
             self.pressedAt = nil
             if !interrupted, inputCount() == inputCountAtPress, Date().timeIntervalSince(pressedAt) <= Self.maxHold {

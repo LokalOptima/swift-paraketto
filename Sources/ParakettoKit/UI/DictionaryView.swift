@@ -46,7 +46,7 @@ struct DictionaryView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             Divider()
-            importStatus
+            importErrors
             Group {
                 if let error = store.loadError {
                     Text(error).foregroundStyle(.secondary).padding(24)
@@ -96,10 +96,8 @@ struct DictionaryView: View {
         .dropDestination(for: URL.self) { urls, _ in
             controller.importFiles(urls)
         } isTargeted: { isDropTargeted = $0 }
-        .onExitCommand {
-            // Clearing the search comes first, as it is the one that loses nothing.
-            if !query.isEmpty { query = "" } else if controller.fileImport != nil { controller.cancelFileImport() }
-        }
+        // During an import the controller takes Esc unless the search holds text, so this clears it first.
+        .onExitCommand { query = "" }
         .confirmationDialog("Delete this replacement?", isPresented: Binding(get: { deletion != nil }, set: { if !$0 { deletion = nil } }), titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 guard let deletion else { return }
@@ -113,19 +111,8 @@ struct DictionaryView: View {
         } message: { Text(error ?? "") }
     }
 
-    @ViewBuilder private var importStatus: some View {
-        if let job = controller.fileImport {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(job.filename).lineLimit(1).truncationMode(.middle)
-                    ProgressView(value: job.progress)
-                        .accessibilityLabel("Transcribing \(job.filename)")
-                }
-                Button("Cancel") { controller.cancelFileImport() }
-            }
-            .padding()
-            Divider()
-        }
+    /// Progress shows in the pill; what went wrong with which file needs the room here.
+    @ViewBuilder private var importErrors: some View {
         if !controller.importErrors.isEmpty {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -211,18 +198,9 @@ struct AudioFileDropOverlay: View {
     DictionaryPreview(empty: true)
 }
 
-#Preview("Importing") {
-    DictionaryPreview(fileImport: .init(filename: "Team meeting.m4a", progress: 0.42))
-}
-
 #Preview("Import failed") {
     DictionaryPreview(importErrors: ["Team meeting.m4a: The operation could not be completed.",
                                      "Voice memo.m4a: No speech detected."])
-}
-
-#Preview("Importing with errors") {
-    DictionaryPreview(fileImport: .init(filename: "Interview.wav", progress: 0.8),
-                      importErrors: ["notes.txt: This file could not be read as an audio recording."])
 }
 
 #Preview("Drop audio files") {

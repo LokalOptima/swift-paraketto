@@ -14,8 +14,8 @@ Neural Engine with Core ML. Audio and transcripts stay on the Mac.
 - Text is pasted only if the app that had focus when you started still has it; otherwise it is only copied, and the pill says so. Dictating with Paraketto itself in front only copies the text
 - **Dictionary** (right-click the menu-bar icon, or choose Dictionary in its menu): explicit, case-sensitive replacements with multiple spellings per target, applied to each transcript before it is pasted. Search ignores case and accents, including stroked letters such as `ł` and `ø`
 - **Transcripts folder** (the button beside +): every transcript is also a plain text file in `~/Library/Application Support/Paraketto/transcripts/`, named by date and time and holding the text as it was pasted or copied. Paraketto never changes or removes these files. The recording is deleted once it is transcribed
-- Drop audio files onto the Dictionary window to transcribe them locally, including WAV, M4A and AAC files supported by macOS. Each transcript gets its file as it is done, and when the batch ends, or is cancelled, the clipboard holds all of them, separated by blank lines. A file without speech is reported instead
-- **Esc**: clears the search first, and cancels an import once the search is empty. During a dictation it discards the dictation, unless a text field holding text has focus, where it acts on that field
+- Drop audio files onto the Dictionary window to transcribe them locally, including WAV, M4A and AAC files supported by macOS. The pill shows a progress bar for the whole batch in place of the meter, and each transcript gets its file as it is done. When the batch ends, or is cancelled, the clipboard holds all of them, separated by blank lines, and the pill says Copied. Files that fail, or hold no speech, are listed in the window, and the pill says Import failed if none worked
+- **Esc**: discards a dictation or cancels an import, from any app with Accessibility. A text field holding text, such as the search, takes it first, as do a popover and the menu
 - Supports 25 European languages with automatic detection, punctuation, and capitalization
 - The model downloads on first use (about 613 MB); existing compatible FluidAudio caches are reused
 
@@ -142,9 +142,9 @@ whole preview, and other previews can stop selecting as well.
 | File | Previews |
 |---|---|
 | `MenuContent.swift` | Ready, Needs Accessibility, Needs Microphone, Shortcut in use, Downloading, Optimizing, Loading, Recording, Transcribing, Notice, Model failed |
-| `PillView.swift` | Recording (with a live meter), Transcribing, Copied, Error, All messages |
+| `PillView.swift` | Recording (with a live meter), Transcribing, Importing, Copied, Error, All messages |
 | `ShortcutRecorder.swift` | All states, Interactive |
-| `DictionaryView.swift` | Dictionary, Empty dictionary, Importing, Import failed, Importing with errors, Drop audio files, Drop while busy |
+| `DictionaryView.swift` | Dictionary, Empty dictionary, Import failed, Drop audio files, Drop while busy |
 | `DictionaryEditor.swift` | Add replacement, Edit replacement, Adding to an existing target, Many spellings, Spelling already used |
 
 `PreviewFixtures.swift` supplies disposable sample dictionary entries. Each preview has its own

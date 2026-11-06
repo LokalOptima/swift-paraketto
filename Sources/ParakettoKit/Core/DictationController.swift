@@ -76,7 +76,11 @@ final class DictationController: ObservableObject {
     struct FileImportStatus {
         let id = UUID()
         let filename: String
+        /// Where this file sits in its batch, so the pill's bar covers the whole batch.
+        var index = 0
+        var count = 1
         var progress: Double = 0
+        var batchProgress: Double { (Double(index) + progress) / Double(max(count, 1)) }
     }
     @Published private(set) var fileImport: FileImportStatus?
     @Published private(set) var importErrors: [String] = []
@@ -85,7 +89,6 @@ final class DictationController: ObservableObject {
     var canImportFiles: Bool {
         isModelReady && !isLoadingModel && !isStartingRecording && state.canStartRecording && importTask == nil
     }
-
     /// Set while the menu is open, so showing the Dictionary can close it from any route.
     var closeMenu: (() -> Void)?
     let dictionary: DictionaryStore
@@ -208,22 +211,24 @@ final class DictationController: ObservableObject {
         Task { await loadModel() }
     }
 
-    /// Finder drops process a batch in order, sharing the loaded recognizer. Each transcript gets its
-    /// file as it is done. The clipboard is set once, when the batch ends or is cancelled, so it isn't
-    /// taken over again with every file: it then holds every transcript so far, separated by blank lines.
+    /// Finder drops process a batch in order, sharing the loaded recognizer, while the pill shows how
+    /// far the batch has got and Esc cancels it, as during a dictation. Each transcript gets its file
+    /// as it is done. The clipboard is set once, when the batch ends or is cancelled, so it isn't taken
+    /// over again with every file: it then holds every transcript so far, separated by blank lines.
     @discardableResult
     func importFiles(_ urls: [URL]) -> Bool {
         guard canImportFiles, !urls.isEmpty, urls.allSatisfy(\.isFileURL) else { return false }
         state = .transcribing
-        overlay?.hide()
         importErrors = []
-        fileImport = FileImportStatus(filename: urls[0].lastPathComponent)
+        fileImport = FileImportStatus(filename: urls[0].lastPathComponent, count: urls.count)
+        overlay?.show()
+        watchEscape()
         importTask = Task {
             await feeder?.value
             var texts: [String] = []
-            for url in urls {
+            for (index, url) in urls.enumerated() {
                 guard !Task.isCancelled else { break }
-                let status = FileImportStatus(filename: url.lastPathComponent)
+                let status = FileImportStatus(filename: url.lastPathComponent, index: index, count: urls.count)
                 fileImport = status
                 do {
                     let original = try await transcriber.transcribeFile(url) { [weak self] fraction in
@@ -247,15 +252,18 @@ final class DictationController: ObservableObject {
                     importErrors.append("\(url.lastPathComponent): \(error.localizedDescription)")
                 }
             }
+            let cancelled = Task.isCancelled
+            stopWatchingEscape()
             fileImport = nil
             importTask = nil
+            // The pill says how it ended; which files failed, and why, is in the window.
             if texts.isEmpty {
-                state = .idle
+                if cancelled || importErrors.isEmpty { returnToIdle() } else { show(.failed("Import failed")) }
             } else if Paster.copy(texts.joined(separator: "\n\n")) {
                 show(.notice("Copied"))
             } else {
                 importErrors.append(Paster.DeliveryError.clipboardUnavailable.localizedDescription)
-                state = .idle
+                show(.failed("Copy failed"))
             }
         }
         return true
@@ -380,21 +388,7 @@ final class DictationController: ObservableObject {
         meter.elapsed = 0
         smoother.reset()
         meter.level = 0
-        // Passive monitors rather than a Carbon hotkey: registering a hotkey while ⌃⌥Space is
-        // physically held makes Carbon drop that key's release event, which left recordings stuck.
-        // The global monitor needs Accessibility and misses this app's own windows, hence the local
-        // one, which consumes the key so that one press never also acts on the window.
-        escapeMonitors = [
-            NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard event.isEscape else { return }
-                Task { @MainActor in self?.cancel() }
-            },
-            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard event.isEscape, !Self.escapeBelongsToField(event.window?.firstResponder) else { return event }
-                Task { @MainActor in self?.cancel() }
-                return nil
-            },
-        ].compactMap { $0 }
+        watchEscape()
         meterTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: Self.meterInterval)
@@ -408,6 +402,36 @@ final class DictationController: ObservableObject {
         }
     }
 
+    /// Passive monitors rather than a Carbon hotkey: registering a hotkey while ⌃⌥Space is
+    /// physically held makes Carbon drop that key's release event, which left recordings stuck.
+    /// The global monitor needs Accessibility and misses this app's own windows, hence the local
+    /// one, which consumes the key so that one press never also acts on the window.
+    private func watchEscape() {
+        escapeMonitors = [
+            NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard event.isEscape else { return }
+                Task { @MainActor in self?.cancel() }
+            },
+            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard event.isEscape, !Self.escapeBelongsToWindow(event.window) else { return event }
+                Task { @MainActor in self?.cancel() }
+                return nil
+            },
+        ].compactMap { $0 }
+    }
+
+    private func stopWatchingEscape() {
+        for monitor in escapeMonitors { NSEvent.removeMonitor(monitor) }
+        escapeMonitors = []
+    }
+
+    /// Popovers and the menu can't become main, and close on Esc, which matters as an import can run
+    /// while the dictionary editor is open.
+    static func escapeBelongsToWindow(_ window: NSWindow?) -> Bool {
+        guard let window else { return false }
+        return !window.canBecomeMain || escapeBelongsToField(window.firstResponder)
+    }
+
     /// Esc in a text field holding text is about that text, such as clearing a search, not about the dictation.
     static func escapeBelongsToField(_ responder: NSResponder?) -> Bool {
         guard let editor = responder as? NSTextView else { return false }
@@ -415,8 +439,7 @@ final class DictationController: ObservableObject {
     }
 
     private func finishSession() {
-        for monitor in escapeMonitors { NSEvent.removeMonitor(monitor) }
-        escapeMonitors = []
+        stopWatchingEscape()
         meterTask?.cancel()
         meterTask = nil
     }

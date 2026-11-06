@@ -20,8 +20,13 @@ struct PillView: View {
     private var content: some View {
         switch controller.state {
         case .recording, .transcribing:
-            SpectrumMeter(meter: controller.meter)
-                .opacity(controller.state == .recording ? 1 : 0.4)
+            if let job = controller.fileImport {
+                ImportProgress(fraction: job.batchProgress)
+                    .accessibilityLabel("Transcribing \(job.filename)")
+            } else {
+                SpectrumMeter(meter: controller.meter)
+                    .opacity(controller.state == .recording ? 1 : 0.4)
+            }
         case .failed(let message):
             Label(message, systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(PillStyle.error)
@@ -46,6 +51,28 @@ private struct PillBackground: View {
         Capsule()
             .fill(PillStyle.fill)
             .overlay(Capsule().strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5))
+    }
+}
+
+/// How far dropped files have been transcribed, in the space the meter takes while recording.
+private struct ImportProgress: View {
+    let fraction: Double
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.down.doc")
+            Capsule()
+                .fill(PillStyle.bar.opacity(0.25))
+                .overlay(alignment: .leading) {
+                    GeometryReader { proxy in
+                        Capsule()
+                            .fill(PillStyle.bar)
+                            .frame(width: max(proxy.size.height, proxy.size.width * min(max(fraction, 0), 1)))
+                    }
+                }
+                .frame(width: 100, height: 6)
+                .animation(.linear(duration: 0.2), value: fraction)
+        }
     }
 }
 
@@ -93,6 +120,7 @@ private struct SpectrumMeter: View {
 #if DEBUG
 #Preview("Recording") { PillPreview(.recording) }
 #Preview("Transcribing") { PillPreview(.transcribing) }
+#Preview("Importing") { PillImportPreview() }
 #Preview("Copied") { PillPreview(.notice("Copied")) }
 #Preview("Error") { PillPreview(.failed("No mic access")) }
 #Preview("All messages") { PillMessagesPreview() }

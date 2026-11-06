@@ -37,11 +37,9 @@ final class PreviewFixtures: ObservableObject {
 
 struct DictionaryPreview: View {
     @StateObject private var fixtures: PreviewFixtures
-    private let fileImport: DictationController.FileImportStatus?
     private let importErrors: [String]
 
-    init(empty: Bool = false, fileImport: DictationController.FileImportStatus? = nil, importErrors: [String] = []) {
-        self.fileImport = fileImport
+    init(empty: Bool = false, importErrors: [String] = []) {
         self.importErrors = importErrors
         _fixtures = StateObject(wrappedValue: PreviewFixtures(empty: empty))
     }
@@ -50,8 +48,7 @@ struct DictionaryPreview: View {
         DictionaryView(controller: fixtures.controller)
             .frame(width: 560, height: 480)
             .onAppear {
-                fixtures.controller.showPreview(fileImport == nil ? .idle : .transcribing,
-                                                fileImport: fileImport, importErrors: importErrors)
+                fixtures.controller.showPreview(.idle, importErrors: importErrors)
             }
     }
 }
@@ -128,11 +125,31 @@ struct PillPreview: View {
     }
 }
 
+/// The pill while dropped files are transcribed, its bar filling and starting over.
+struct PillImportPreview: View {
+    @StateObject private var fixtures = PreviewFixtures(empty: true)
+
+    var body: some View {
+        PillView(controller: fixtures.controller)
+            .background(Color(white: 0.6))
+            .task {
+                for tick in 0... {
+                    let status = DictationController.FileImportStatus(filename: "Team meeting.m4a",
+                                                                      progress: Double(tick % 40) / 40)
+                    fixtures.controller.showPreview(.transcribing, fileImport: status)
+                    do { try await Task.sleep(for: .milliseconds(100)) }
+                    catch { return }
+                }
+            }
+    }
+}
+
 /// Every fixed message the pill can show, to see at a glance that none is truncated.
 struct PillMessagesPreview: View {
     private static let messages: [DictationController.State] = [
         .notice("Copied"), .failed("No mic access"), .failed("No microphone"),
         .failed("Can’t record"), .failed("Recording failed"), .failed("Dictation failed"), .failed("Shortcut in use"),
+        .failed("Import failed"), .failed("Copy failed"),
     ]
 
     var body: some View {

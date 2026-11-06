@@ -22,7 +22,7 @@ Requires macOS 14+ and Apple Silicon.
    ```bash
    xattr -dr com.apple.quarantine /Applications/Paraketto.app
    ```
-3. Open it and allow Accessibility, which lets it paste. It asks for the microphone on your first dictation.
+3. Open it and allow Accessibility, which lets it paste. Quit and reopen Paraketto after granting it. It asks for the microphone on your first dictation.
 
 To update, quit the app, replace it with the new download, and run the `xattr` command from step 2 again. Your permissions carry over.
 

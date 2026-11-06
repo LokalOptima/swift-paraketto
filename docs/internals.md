@@ -73,12 +73,15 @@ Other people download `Paraketto.zip` from a GitHub release instead of building.
 Silicon and macOS 14+, grant Microphone and Accessibility access, and download their own model on
 first use. The zip contains no recordings or transcripts.
 
-To release, raise `CFBundleShortVersionString` and `CFBundleVersion` in `Info.plist`, commit, push,
-and run `make release`. It refuses a commit that isn't pushed and a version that already exists, then
+For the first release, use the version already in `Info.plist`. For updates, raise
+`CFBundleShortVersionString` and `CFBundleVersion`. Commit, push to `master`, and run `make release`.
+It refuses a commit that isn't pushed and a version that already exists, then
 pushes the tag `v<version>`. The tag starts `.github/workflows/release.yml`, which runs `make dist` on
-a GitHub macOS runner and publishes the release with the zip. If that build fails, the tag stays
-without a release: delete it with `git push --delete origin v<version>`, fix the problem and run
-`make release` again. To test a change to the workflow without publishing, start it from the
+a GitHub macOS runner and publishes the release with the zip. Installation instructions are in
+the README; `.github/RELEASE_NOTES.md` provides the same instructions for a release description.
+The workflow checks that the tag's version matches `Info.plist`.
+If a build fails transiently, rerun it from Actions. If it needs a code change, fix it and release
+a new version. To test a change to the workflow without publishing, start it from the
 repository's Actions tab (**Release → Run workflow**), which builds and signs but doesn't publish.
 
 `make dist` builds the zip in `.build/dist` from a copy of the last commit, so uncommitted work stays
@@ -178,7 +181,10 @@ in Applications.
 - **Accessibility**: needed to send the Cmd+V keystroke and to see `Esc` in other apps. Prompted at
   launch, granted in System Settings → Privacy & Security → Accessibility. Without it the transcript
   is only copied to the clipboard and `Esc` can't cancel a recording, which the menu explains under
-  **Grant Accessibility…**. Both are checked again at each recording.
+  **Grant Accessibility…**. After a grant, quit and reopen the app so event-posting permission
+  takes effect. If Accessibility is granted but posting is unavailable, the menu says
+  **Reopen to paste** and explains that transcripts are copied until then.
+  Microphone access is checked before recording; Accessibility and event posting are checked before pasting.
 
 The shortcut needs neither permission. Key combinations are Carbon hotkeys. A bare modifier tap relies
 on macOS delivering modifier changes to global monitors without Accessibility, which Apple does not
@@ -202,8 +208,9 @@ again.
 
 `AXIsProcessTrusted` updates while the app runs. Posting Cmd+V is a separate privilege under the same
 switch, and [Apple says](https://developer.apple.com/forums/thread/727984)
-`CGPreflightPostEventAccess` doesn't update until a relaunch. Whether pasting works straight after a
-first grant is untested, so the log records both at launch and at each delivery.
+`CGPreflightPostEventAccess` doesn't update until a relaunch. The app checks both privileges before
+claiming a paste was sent, and the log records both at launch and at each delivery. The first-grant
+instructions explicitly include reopening the app.
 
 ### Accessibility and rebuilds
 

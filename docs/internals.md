@@ -371,7 +371,18 @@ languages or a general speed guarantee. The historical LibriSpeech results below
 
 ### Faster than the stock export
 
-Two optional exports, built locally with `uv` on the `dev-tools` branch (they are too large for the
+`codex/model-optimizations` preserves the optional multi-window encoder and fused decoder.
+This branch includes their export scripts, Python dependency lockfile and Make targets, alongside
+all cleanup and resource-lifetime improvements from `53ab62d`. Keep this experimental branch
+separate from `master`; the main app uses only the stock exports.
+
+On this branch, run `make encoder-export` and `make decoder-export`, then rebuild and reopen the
+app to load the generated models. Generation requires `uv`, downloads the checkpoint/weights,
+and writes the optional models under Application Support. The multi-window encoder needs
+macOS 15+. Neither target runs during an ordinary app build. Conversions can change floating-point
+results, so recheck output parity and performance before relying on a newly generated export.
+
+Two optional exports, built locally with `uv` on this branch (they are too large for the
 repo) and picked up automatically by the app from `~/Library/Application Support/Paraketto/models/`:
 
 - `make encoder-export`: the encoder as one multi-function Core ML model with 5 s, 10 s and 15 s

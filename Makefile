@@ -9,6 +9,7 @@ INSTALL_APP   ?= 1
 INSTALL_DIR   ?= /Applications
 BINARY        := .build/$(CONFIG)/ParakettoLauncher
 CONTENTS      := $(BUNDLE)/Contents
+MODELS_DIR    := $(HOME)/Library/Application Support/Paraketto/models
 VAD_PACKAGE   := Resources/VadHead.mlpackage
 VAD_COMPILED  := .build/VadHead.mlmodelc
 APP_ICON      := .build/Paraketto.icns
@@ -30,7 +31,7 @@ DIST_SIGN_NAME ?=
 # From the last commit, which is what `dist` builds, and only worked out when a release needs it.
 VERSION        = $(shell git show HEAD:Resources/Info.plist | plutil -extract CFBundleShortVersionString raw -o - -)
 
-.PHONY: all build bundle xcode-bundle icons run trust vad dist release clean
+.PHONY: all build bundle xcode-bundle icons run trust vad dist release clean encoder-export decoder-export
 
 all: bundle
 
@@ -138,6 +139,19 @@ release:
 	@if git ls-remote --exit-code --tags origin v$(VERSION) > /dev/null; then echo "error: v$(VERSION) already exists, so raise the version in Resources/Info.plist"; exit 1; fi
 	git push origin HEAD:refs/tags/v$(VERSION)
 	@echo "GitHub is building v$(VERSION) and publishes it when the build finishes. Follow it on the repository's Actions tab."
+
+# Exports the encoder with 5 s, 10 s and 15 s windows (needs uv; downloads the 1.2 GB checkpoint once)
+# and compiles it where the app and CLI pick it up automatically.
+encoder-export:
+	cd tools/export && uv run python export_encoder.py --out "$(MODELS_DIR)/parakeet-ultra-encoder/Encoder.mlpackage"
+	rm -rf "$(MODELS_DIR)/parakeet-ultra-encoder/Encoder.mlmodelc"
+	xcrun coremlcompiler compile "$(MODELS_DIR)/parakeet-ultra-encoder/Encoder.mlpackage" "$(MODELS_DIR)/parakeet-ultra-encoder"
+
+# Exports the fused decoder+joint step model (needs uv; fetches ~36 MB of weights) and compiles it.
+decoder-export:
+	cd tools/export && uv run python export_fused_decoder.py --out "$(MODELS_DIR)/parakeet-ultra-decoder/DecoderJoint.mlpackage"
+	rm -rf "$(MODELS_DIR)/parakeet-ultra-decoder/DecoderJoint.mlmodelc"
+	xcrun coremlcompiler compile "$(MODELS_DIR)/parakeet-ultra-decoder/DecoderJoint.mlpackage" "$(MODELS_DIR)/parakeet-ultra-decoder"
 
 # Drops the stale Accessibility entry left by a previous (ad-hoc) build and opens the
 # Accessibility pane so the running build can be granted again.

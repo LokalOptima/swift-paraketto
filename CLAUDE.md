@@ -16,6 +16,10 @@ When the user's certificate exists, `make bundle`, `make run` and Xcode builds s
 
 Tests, `paraketto-cli`, benchmarks and model exporters live on the `dev-tools` branch, which is `master` plus those files. To use them, run `git switch dev-tools && git merge master`. Never merge `dev-tools` into `master`.
 
+The `codex/model-optimizations` branch preserves the optional multi-window encoder and fused
+decoder runtime paths and includes `make encoder-export` / `make decoder-export` with their
+export tools. Keep this branch separate from `master`, whose app uses the stock exports.
+
 ## Rules
 
 - Audio and transcripts stay on the Mac, and `Log` never receives dictated text.

@@ -35,6 +35,13 @@ let package = Package(
             path: "Sources/ParakettoCLI",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+        .executableTarget(
+            name: "paraketto-screenshots",
+            dependencies: ["ParakettoKit"],
+            path: "Sources/ParakettoScreenshots",
+            resources: [.copy("showcase.html")],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
         .testTarget(
             name: "ParakettoTests",
             dependencies: ["ParakeetTDT", "ParakettoKit"],

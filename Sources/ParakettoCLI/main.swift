@@ -14,12 +14,9 @@ var comparePath: String?
 var vadProbe = false
 var showTokens = false
 var showPlan = false
-var encoderPath: String?
 var chunkMilliseconds = 0  // > 0 feeds each file to a session in chunks, as the app does while recording
 var pauseSeconds = 0.8     // silence that commits a segment while recording; 0 = window fill only
 var hypothesesPath: String?  // writes file<TAB>text per file, for tests/score.py
-var useFused = true
-var fusedPath: String?
 var arguments = Array(CommandLine.arguments.dropFirst())
 
 func argumentError(_ message: String) -> Never {
@@ -42,7 +39,6 @@ while !arguments.isEmpty {
     case "--vad-probe": vadProbe = true
     case "--tokens": showTokens = true
     case "--plan": showPlan = true
-    case "--encoder": encoderPath = argumentValue(for: argument)
     case "--chunk-ms":
         guard let value = Int(argumentValue(for: argument)), value >= 0, value <= Int.max / 16 else {
             argumentError("--chunk-ms expects a nonnegative number of milliseconds")
@@ -54,10 +50,6 @@ while !arguments.isEmpty {
         }
         pauseSeconds = value
     case "--hypotheses": hypothesesPath = argumentValue(for: argument)
-    case "--fused":
-        let value = argumentValue(for: argument)
-        useFused = value != "off"
-        fusedPath = ["on", "off"].contains(value) ? nil : value
     default:
         if argument.hasPrefix("--") { argumentError("Unknown option: \(argument)") }
         files.append(argument)
@@ -74,7 +66,6 @@ func printComputePlans(directory: URL, store: ModelStore, vad: URL?) async {
         (ModelStore.jointFilename, directory.appendingPathComponent(ModelStore.jointFilename), .cpuAndNeuralEngine),
     ]
     if let vad { models.append(("VadHead", vad, .cpuAndNeuralEngine)) }
-    if let own = store.ownEncoderURL { models.append(("Encoder (ours, default function)", own, .cpuAndNeuralEngine)) }
     for (name, url, units) in models {
         let configuration = MLModelConfiguration()
         configuration.computeUnits = units
@@ -150,11 +141,7 @@ if showPlan {
     }
     if files.isEmpty { exit(0) }
 }
-let encoderURL = encoderPath.map { URL(fileURLWithPath: $0) } ?? store.ownEncoderURL
-let fusedURL = useFused ? (fusedPath.map { URL(fileURLWithPath: $0) } ?? store.ownFusedDecoderURL) : nil
-let models = try ParakeetModels(directory: directory, vadModel: vadPath.map { URL(fileURLWithPath: $0) }, encoderModel: encoderURL, fusedDecoder: fusedURL)
-FileHandle.standardError.write(Data("fused decoder step: \(fusedURL == nil ? "off" : "on")\n".utf8))
-FileHandle.standardError.write(Data("encoder: \(encoderURL?.path ?? "FluidAudio 15 s") windows \(models.encoder.variants.map(\.melFrames))\n".utf8))
+let models = try ParakeetModels(directory: directory, vadModel: vadPath.map { URL(fileURLWithPath: $0) })
 let transcriber = try ParakeetTranscriber(models: models, commitPauseSeconds: pauseSeconds)
 FileHandle.standardError.write(Data("commit pause: \(pauseSeconds) s\n".utf8))
 

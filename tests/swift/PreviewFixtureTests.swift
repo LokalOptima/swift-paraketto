@@ -7,17 +7,16 @@ final class PreviewFixtureTests: XCTestCase {
     @MainActor
     func testPreviewsUseDisposableDataAndIndependentStores() throws {
         var fixture: PreviewFixtures? = PreviewFixtures()
-        let root = fixture!.controller.history.directory.deletingLastPathComponent()
+        let root = fixture!.controller.dictionary.url.deletingLastPathComponent()
         XCTAssertTrue(root.path.contains("ParakettoPreviews/"))
-        XCTAssertEqual(fixture!.controller.dictionary.rules.count, 3)
-        XCTAssertEqual(fixture!.controller.history.entries.count, 4)
-        XCTAssertTrue(fixture!.controller.history.entries[0].displayText.contains("GitHub"))
-        XCTAssertTrue(fixture!.controller.history.entries[0].text.contains("gee tub"))
+        XCTAssertEqual(fixture!.controller.dictionary.rules.count, 6)
+        XCTAssertEqual(fixture!.controller.dictionary.apply(to: "I built para keto with swift ui and core ml on mac os, then pushed it to git hub."),
+                       "I built Paraketto with SwiftUI and Core ML on macOS, then pushed it to GitHub.")
+        XCTAssertEqual(fixture!.controller.dictionary.apply(to: "Send it to my email address."), "Send it to hello@example.com.")
         XCTAssertEqual(fixture!.controller.state, .loadingModel)
         let empty = PreviewFixtures(empty: true)
         XCTAssertNotEqual(empty.controller.dictionary.url, fixture!.controller.dictionary.url)
         XCTAssertTrue(empty.controller.dictionary.rules.isEmpty)
-        XCTAssertTrue(empty.controller.history.entries.isEmpty)
         fixture = nil
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.path))
     }

@@ -11,6 +11,7 @@ Menu-bar dictation app for macOS: Parakeet Ultra on Core ML, with a SwiftUI and 
 - `make trust`: re-grant Accessibility after an ad-hoc signed rebuild
 - `make dist`: build the downloadable zip from the last commit, signed ad hoc, without touching the checkout's build or `/Applications`
 - `make release`: push the version tag for the last pushed commit, so `.github/workflows/release.yml` builds and publishes the release
+- `make screenshots`: export dark-mode preview PNGs and a local HTML showcase; always builds debug
 - `make test`: regression tests in release, without models or the `#if DEBUG` preview tests
 - `swift test`: runs in debug, so it adds the preview tests
 - `make test-models`: model tests, which need `make prepare-models` and the LibriSpeech fixture

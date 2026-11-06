@@ -21,9 +21,15 @@ final class PreviewFixtures: ObservableObject {
                                         shortcuts: ShortcutSettings(defaults: defaults))
         guard !empty else { return }
         do {
-            try dictionary.save(DictionaryRule(target: "GitHub", aliases: ["gee tub", "git hub"]))
-            try dictionary.save(DictionaryRule(target: "Paraketto", aliases: ["para keto"]))
-            try dictionary.save(DictionaryRule(target: "pop. size", aliases: ["population size"]))
+            let rules = [
+                DictionaryRule(target: "Paraketto", aliases: ["para keto", "parakeeto"]),
+                DictionaryRule(target: "GitHub", aliases: ["git hub", "get hub"]),
+                DictionaryRule(target: "SwiftUI", aliases: ["swift you eye", "swift ui"]),
+                DictionaryRule(target: "macOS", aliases: ["mac os", "Mac OS"]),
+                DictionaryRule(target: "Core ML", aliases: ["core em el", "core ml"]),
+                DictionaryRule(target: "hello@example.com", aliases: ["my email address"]),
+            ]
+            for rule in rules { try dictionary.save(rule) }
         } catch {
             fatalError("Could not create preview fixtures: \(error)")
         }

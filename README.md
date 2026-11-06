@@ -31,3 +31,9 @@ Clone the repo and then use `make run`. Requires Xcode 16 or later.
 
 ## If you don't care:
 Just ask your agent. It'll figure it out.
+
+## Screenshots (dev-tools)
+
+On the `dev-tools` branch, run `make screenshots` to export compact dark-mode PNGs of the app's
+preview screens and a local HTML showcase. Open `.build/screenshots/index.html` in your browser.
+Requires macOS 14.4+ and the same Xcode build tools as the app. No additional software is needed.

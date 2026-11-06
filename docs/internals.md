@@ -390,6 +390,41 @@ on `optimizations`. That branch includes `make encoder-export` and
 `master` uses one stock-model path and does not discover or load those optional exports.
 The batch memory limits, VAD caching and off-main-thread live feeder apply to both branches.
 
+### Screenshots and local showcase
+
+Run `make screenshots` on `dev-tools`. It writes compact dark-mode PNGs to `.build/screenshots/dark/`,
+a `screenshots.json` manifest, and a self-contained showcase at `.build/screenshots/index.html`.
+Open the HTML file directly in a browser; it uses only the adjacent PNGs, system fonts and inline
+CSS/JavaScript. It shows four essential images: the menu, recording indicator, dictionary and audio-file drop.
+There is no installation, server or network dependency for viewing it.
+
+The command requires macOS 14.4+, the existing Xcode build tools, and a logged-in desktop session.
+It briefly opens its own preview windows and captures those windows with macOS's built-in
+ScreenCaptureKit current-process API, without requesting access to the rest of the desktop.
+These are the real SwiftUI/AppKit views, with native window chrome and editor popovers. Transparent
+panel margins are cropped, with eight logical points of padding. The manifest records pixel size
+and display scale so the web page keeps text at the right size; normal windows are exported at 2×,
+while native popover captures use the compositor's 1× content. Appearance follows this Mac's macOS
+version. The screenshot code and fixtures are excluded from release builds.
+
+Fixtures use a temporary dictionary with illustrative corrections for Paraketto, GitHub, SwiftUI,
+macOS and Core ML, plus an example email shortcut. Model loading, microphone capture and hotkeys
+are never started. The recording meter is fed a fixed sequence before capture. Personal dictionary,
+transcript files, permissions and preferences are not used.
+
+```bash
+make screenshots
+open .build/screenshots/index.html
+make screenshots SCREENSHOTS_DIR=/tmp/paraketto-shots
+make screenshots SCREENSHOTS_ARGS='--only dictionary'
+swift run -c debug paraketto-screenshots --list
+```
+
+The default export covers 19 screens: dictionary, empty/error/drop states, replacement editors,
+menu/setup/permission states, and recording/transcription/import/clipboard/error indicators.
+`--only` exports one screen and creates a matching manifest; run without it to rebuild the complete
+showcase. Existing unrelated files in the output directory are left alone.
+
 ### Measuring
 
 - `xcrun xctrace record --template 'Core ML' --launch -- .build/release/paraketto-cli clip.wav`

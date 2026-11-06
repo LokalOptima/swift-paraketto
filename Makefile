@@ -33,11 +33,16 @@ DIST_SIGN_NAME ?=
 # From the last commit, which is what `dist` builds, and only worked out when a release needs it.
 VERSION        = $(shell git show HEAD:Resources/Info.plist | plutil -extract CFBundleShortVersionString raw -o - -)
 
-.PHONY: all build bundle xcode-bundle icons run prepare-models trust vad dist release cli test test-models compare longform vad-export encoder-export decoder-export clean
+.PHONY: screenshots all build bundle xcode-bundle icons run prepare-models trust vad dist release cli test test-models compare longform vad-export encoder-export decoder-export clean
 
 MODELS_DIR    := $(HOME)/Library/Application Support/Paraketto/models
 
 all: bundle
+
+# Always debug: preview fixtures and screenshot code are excluded from release builds.
+SCREENSHOTS_DIR ?= .build/screenshots
+screenshots:
+	swift run -c debug paraketto-screenshots --output "$(SCREENSHOTS_DIR)" $(SCREENSHOTS_ARGS)
 
 build:
 	swift build -c $(CONFIG)

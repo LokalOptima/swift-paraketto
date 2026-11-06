@@ -371,7 +371,7 @@ languages or a general speed guarantee.
 ### Optional model experiments
 
 The multi-window encoder, fused decoder, export tools and historical comparisons are preserved
-on `codex/model-optimizations`. That branch includes `make encoder-export` and
+on `optimizations`. That branch includes `make encoder-export` and
 `make decoder-export`; its copy of this document explains their setup and tradeoffs.
 `master` uses one stock-model path and does not discover or load those optional exports.
 The batch memory limits, VAD caching and off-main-thread live feeder apply to both branches.
@@ -412,6 +412,6 @@ existing path, including one created by another writer after a filename was chos
 benchmarks and the VAD exporter live on the `dev-tools` branch, which is `master` plus those files,
 and this document's copy there explains them. `git switch dev-tools && git merge master` brings it up
 to date. Never merge `dev-tools` into `master`.
-Keep `codex/model-optimizations` separate from `master` as well.
+Keep `optimizations` separate from `master` as well.
 Some tests on `dev-tools` still use removed history, transcript-editing and optional-model APIs; merging
 the app changes also requires adapting those tests before the full suite can run.

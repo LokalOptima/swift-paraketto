@@ -17,7 +17,7 @@ When the user's certificate exists, `make bundle`, `make run` and Xcode builds s
 Tests, `paraketto-cli`, benchmarks and the VAD exporter live on the `dev-tools` branch, which is `master` plus those files. To use them, run `git switch dev-tools && git merge master`. Never merge `dev-tools` into `master`.
 
 Optional multi-window encoder and fused decoder experiments, including their export tools,
-live on `codex/model-optimizations`. Keep that branch separate from `master`, whose app loads
+live on `optimizations`. Keep that branch separate from `master`, whose app loads
 only the stock models. The recent memory and responsiveness improvements apply to both.
 
 ## Rules

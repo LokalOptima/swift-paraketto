@@ -369,6 +369,12 @@ SwiftPM executable and `Paraketto.xcodeproj`. Recognition is isolated in `Source
 Generated bundles and caches are ignored. The source icon lives in `Resources`;
 `tools/make_icon.swift` generates the app icon and template menu-bar image together.
 
+Files dropped on the Dictionary window arrive through `FileDropArea`, an AppKit view that hosts the
+window's content, not through SwiftUI's `dropDestination`. With `dropDestination`, Finder's file icon
+stayed on screen for a moment after it was released over the window. AppKit removes it on release,
+before the drop is handled. AppKit offers a drop only to the view under the pointer and its
+ancestors, so the content has to be inside the drop view rather than beside it.
+
 Each transcript is a text file in `~/Library/Application Support/Paraketto/transcripts/`, written
 before the text is pasted. If it can't be written, a dictation is pasted anyway and the log records
 the failure, while an import lists it among its errors and still copies the text.

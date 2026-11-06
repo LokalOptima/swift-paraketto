@@ -25,6 +25,14 @@ struct DictionaryView: View {
     }
 
     var body: some View {
+        FileDropArea(isTargeted: { isDropTargeted = $0 }, drop: { controller.importFiles($0) }, content: AnyView(content))
+            .frame(minWidth: 500, minHeight: 380)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(nsColor: .textBackgroundColor).ignoresSafeArea())
+            .toolbarBackground(.hidden, for: .windowToolbar)
+    }
+
+    private var content: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 SearchField(prompt: "Search dictionary", text: $query)
@@ -80,10 +88,7 @@ struct DictionaryView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(minWidth: 500, minHeight: 380)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Color(nsColor: .textBackgroundColor).ignoresSafeArea())
-        .toolbarBackground(.hidden, for: .windowToolbar)
         .overlay {
             if isDropTargeted {
                 AudioFileDropOverlay(isAvailable: controller.canImportFiles)
@@ -93,9 +98,6 @@ struct DictionaryView: View {
             }
         }
         .animation(.easeOut(duration: reduceMotion ? 0 : 0.16), value: isDropTargeted)
-        .dropDestination(for: URL.self) { urls, _ in
-            controller.importFiles(urls)
-        } isTargeted: { isDropTargeted = $0 }
         // During an import the controller takes Esc unless the search holds text, so this clears it first.
         .onExitCommand { query = "" }
         .confirmationDialog("Delete this replacement?", isPresented: Binding(get: { deletion != nil }, set: { if !$0 { deletion = nil } }), titleVisibility: .visible) {

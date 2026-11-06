@@ -383,6 +383,18 @@ on `optimizations`. That branch includes `make encoder-export` and
 `master` uses one stock-model path and does not discover or load those optional exports.
 The batch memory limits, VAD caching and off-main-thread live feeder apply to both branches.
 
+## Website
+
+GitHub Pages publishes `docs/` from `master` at
+[Paraketto](https://lokaloptima.github.io/swift-paraketto/). Pushing changes to that branch
+updates the site through GitHub's built-in Pages publishing; no custom workflow or build is needed.
+
+Edit `docs/index.html` directly; the styles are inline, and the page also opens locally without
+JavaScript or a server. Its images are `docs/logo.png` and the three PNGs in `docs/dark/`.
+`docs/.nojekyll` keeps GitHub from processing the files with Jekyll.
+To refresh the screenshots, run `make screenshots` on `dev-tools` and copy the selected PNGs
+from `.build/screenshots/` into `docs/`, keeping the hand-edited HTML.
+
 ## Layout
 
 The application lives in the `ParakettoKit` library in `Sources/ParakettoKit`, so Xcode can preview

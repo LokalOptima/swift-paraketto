@@ -31,8 +31,8 @@ If setup fails, choose **Retry** in the menu.
 
 Model files are cached at `~/Library/Application Support/Paraketto/models/parakeet-ultra/`.
 Downloads are installed only after all required files arrive, so an interrupted download
-cannot leave a seemingly ready model. Existing compatible FluidAudio caches and optional
-locally optimized Ultra encoder and decoder exports are reused.
+cannot leave a seemingly ready model. Existing compatible FluidAudio caches are reused.
+The app loads the stock 15 s encoder and separate decoder and joint models.
 
 ## Build and run
 
@@ -281,7 +281,6 @@ with no package dependencies:
 | `ParakeetTranscriber.swift` | streaming sessions and mel → encoder → decode; about 1 s of context at pauses, 2 s of overlap on each side of cuts through speech |
 | `TdtDecoder.swift` | greedy Token-and-Duration Transducer loop with the 2-layer LSTM state |
 | `VoiceActivity.swift` | places cuts at pauses found by the model's own VAD head |
-| `EncoderSet.swift` | picks the shortest encoder window that holds a segment |
 | `MultiArray.swift` | small `MLMultiArray` helpers |
 
 The Ultra model files are FluidInference's Core ML conversion of moondream's checkpoint, which is
@@ -367,36 +366,15 @@ The largest improvement was temporary-object lifetime, rather than fewer model c
 101 s session checked bounded audio buffering; cancellation, recognizer reuse and short silence
 were also exercised. WAV finalization measured about 0.08 ms and remains synchronized.
 This synthetic fixture checks path consistency and resource use, not recognition accuracy across
-languages or a general speed guarantee. The historical LibriSpeech results below are separate.
+languages or a general speed guarantee.
 
-### Faster than the stock export
+### Optional model experiments
 
-Two optional exports, built locally with `uv` on the `dev-tools` branch (they are too large for the
-repo) and picked up automatically by the app from `~/Library/Application Support/Paraketto/models/`:
-
-- `make encoder-export`: the encoder as one multi-function Core ML model with 5 s, 10 s and 15 s
-  windows (605 MB, weights shared), traced from Hugging Face `transformers`' `ParakeetForTDT` and
-  quantized to int8 per channel. A segment uses the shortest window that holds it, so a 4.5 s
-  utterance costs a 17 ms encoder pass instead of 55 ms. Needs macOS 15 for multi-function models.
-- `make decoder-export`: one Core ML model that advances the LSTM with the emitted token and
-  decides the next frame, replacing two framework calls per token step with one (35 MB).
-
-Historical measurements on the 17 LibriSpeech clips on an M1 Max, with the same transcripts
-in every configuration (these timings have not been remeasured for the current build):
-
-| Configuration | RTFx |
-|---|---|
-| FluidAudio models, two-call decode | 80x |
-| + fused decoder step | 93x |
-| + multi-window encoder | 124x |
-
-In those measurements, time was split between the encoder on the ANE (17 to 55 ms depending on window) and
-the sequential decode on the CPU: 0.73 ms per emitted token inside the fused step, bound by
-streaming the fp32 LSTM and joint weights through one core (Core ML's per-call floor is 35 µs, and
-smaller weights do not help because the CPU path expands them at load). A Metal decoder that ran
-the greedy loop on the GPU reached 182x with identical transcripts (commit `89c4e5e`), but hand-written
-kernels failed silently twice on the way there, and for dictation the 30 ms it saves on a 10 s
-utterance is below perception, so it was removed in favour of the framework path.
+The multi-window encoder, fused decoder, export tools and historical comparisons are preserved
+on `codex/model-optimizations`. That branch includes `make encoder-export` and
+`make decoder-export`; its copy of this document explains their setup and tradeoffs.
+`master` uses one stock-model path and does not discover or load those optional exports.
+The batch memory limits, VAD caching and off-main-thread live feeder apply to both branches.
 
 ## Layout
 
@@ -431,8 +409,9 @@ existing path, including one created by another writer after a filename was chos
 ## Tests and tools
 
 `master` holds only what builds and runs the app. The regression tests, the `paraketto-cli` runner,
-benchmarks and model exporters live on the `dev-tools` branch, which is `master` plus those files,
+benchmarks and the VAD exporter live on the `dev-tools` branch, which is `master` plus those files,
 and this document's copy there explains them. `git switch dev-tools && git merge master` brings it up
 to date. Never merge `dev-tools` into `master`.
-Some tests on `dev-tools` still use the removed history and transcript-editing APIs; merging
+Keep `codex/model-optimizations` separate from `master` as well.
+Some tests on `dev-tools` still use removed history, transcript-editing and optional-model APIs; merging
 the app changes also requires adapting those tests before the full suite can run.

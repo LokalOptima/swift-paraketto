@@ -31,14 +31,12 @@ actor Transcriber {
         // Keep the existing Ultra receipt so upgrades reuse its preparation history.
         let preparation = ModelPreparationRecord(
             directory: directory,
-            additionalModels: [store.ownEncoderURL, store.ownFusedDecoderURL].compactMap { $0 },
             recordURL: store.ownDirectory.deletingLastPathComponent()
                 .appendingPathComponent(".multi-preparation.json"))
         progress(preparation.isPrepared ? .loading : .optimizing)
         if vadModelURL == nil { Log.info("VadHead.mlmodelc not bundled; long recordings fall back to fixed windows") }
         // VadHead includes its own trained subsampler and detects pauses independently.
-        let models = try ParakeetModels(directory: directory, vadModel: vadModelURL, encoderModel: store.ownEncoderURL, fusedDecoder: store.ownFusedDecoderURL)
-        Log.info("encoder windows (mel frames): \(models.encoder.variants.map(\.melFrames))")
+        let models = try ParakeetModels(directory: directory, vadModel: vadModelURL)
         let transcriber = try ParakeetTranscriber(models: models)
         try transcriber.warmUp()
         do { try preparation.markPrepared() }

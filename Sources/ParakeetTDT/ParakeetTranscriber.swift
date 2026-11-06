@@ -36,7 +36,7 @@ public final class ParakeetTranscriber {
     /// - Parameter commitPauseSeconds: silence that ends a segment while recording (0 waits for the window to fill).
     public init(models: ParakeetModels, commitPauseSeconds: Double = 0.8) throws {
         self.models = models
-        decoder = TdtDecoder(decoder: models.decoder, joint: models.joint, fusedStep: models.fusedStep)
+        decoder = TdtDecoder(decoder: models.decoder, joint: models.joint)
         var segmenter = Segmenter()
         segmenter.maximumSegmentFrames = Self.windowFrames - 2 * Self.overlapFrames
         segmenter.commitPauseFrames = Int((commitPauseSeconds / 0.08).rounded())
@@ -54,15 +54,10 @@ public final class ParakeetTranscriber {
     }
 
     /// Exercise model execution directly: normal transcription correctly skips silence.
-    /// Each encoder window is exercised without bypassing the recording's speech gate.
+    /// The encoder and decoder are exercised without bypassing the recording's speech gate.
     public func warmUp() throws {
-        for variant in models.encoder.variants {
-            // Keep the padded length inside this variant, including the extra mel frame.
-            let count = min((variant.melFrames - 1) * 160, ParakeetConstants.windowSamples)
-                / ParakeetConstants.samplesPerFrame * ParakeetConstants.samplesPerFrame
-            let samples = [Float](repeating: 0, count: count)
-            _ = try decoder.decode(encode(preprocess(samples[...])))
-        }
+        let samples = [Float](repeating: 0, count: Self.windowFrames * ParakeetConstants.samplesPerFrame)
+        _ = try decoder.decode(encode(preprocess(samples[...])))
         if let vad = models.vad {
             let mel = try preprocess([Float](repeating: 0, count: ParakeetConstants.windowSamples)[...])
             _ = try vad.prediction(from: MLDictionaryFeatureProvider(dictionary: ["mel": MLFeatureValue(multiArray: mel.mel)]))
@@ -380,10 +375,8 @@ public final class ParakeetTranscriber {
     }
 
     func encode(_ mel: Mel) throws -> EncoderFrames {
-        let variant = models.encoder.variant(forMelLength: mel.length.firstInt)
-        let input = try Self.slice(mel.mel, toFrames: variant.melFrames)
-        let output = try variant.model.prediction(from: MLDictionaryFeatureProvider(dictionary: [
-            "mel": MLFeatureValue(multiArray: input),
+        let output = try models.encoder.prediction(from: MLDictionaryFeatureProvider(dictionary: [
+            "mel": MLFeatureValue(multiArray: mel.mel),
             "mel_length": MLFeatureValue(multiArray: mel.length),
         ]))
         // The encoder reports one frame more than the audio covers at some lengths; FluidAudio caps it
@@ -407,18 +400,5 @@ public final class ParakeetTranscriber {
         var result = Array(UnsafeBufferPointer(start: probabilities.floatPointer, count: min(frames, probabilities.count)))
         if result.count < frames { result += Array(repeating: 1, count: frames - result.count) }
         return result
-    }
-
-    /// The first `frames` columns of a [1, 128, T] mel; the array itself when it already fits.
-    private static func slice(_ mel: MLMultiArray, toFrames frames: Int) throws -> MLMultiArray {
-        let shape = mel.shape.map(\.intValue)
-        guard shape.count == 3, shape[2] != frames else { return mel }
-        guard shape[2] > frames, mel.dataType == .float32 else { throw ParakeetError.unexpectedShape("mel", shape) }
-        let sliced = try MLMultiArray.float32([1, shape[1], frames])
-        let rowStride = mel.strides[1].intValue
-        for row in 0..<shape[1] {
-            (sliced.floatPointer + row * frames).update(from: mel.floatPointer + row * rowStride, count: frames)
-        }
-        return sliced
     }
 }

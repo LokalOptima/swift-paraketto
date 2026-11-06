@@ -395,7 +395,7 @@ The batch memory limits, VAD caching and off-main-thread live feeder apply to bo
 Run `make screenshots` on `dev-tools`. It writes compact dark-mode PNGs to `.build/screenshots/dark/`,
 a `screenshots.json` manifest, and a self-contained showcase at `.build/screenshots/index.html`.
 Open the HTML file directly in a browser; it uses only the adjacent PNGs, system fonts and inline
-CSS/JavaScript. It shows four essential images: the menu, recording indicator, dictionary and audio-file drop.
+CSS/JavaScript. It shows three essential images: the menu, dictionary and audio-file drop.
 There is no installation, server or network dependency for viewing it.
 
 The command requires macOS 14.4+, the existing Xcode build tools, and a logged-in desktop session.

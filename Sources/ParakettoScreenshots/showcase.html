@@ -28,9 +28,14 @@ h1 span{color:var(--muted)}
 kbd{font:inherit;color:var(--text)}
 .download{display:inline-flex;align-items:center;gap:20px;background:var(--accent);color:#152014;padding:12px 18px;border-radius:7px;font-size:13px;font-weight:650;text-decoration:none}
 .requirements{font-size:11px;color:var(--muted);margin-top:15px}
+.hero>div{min-width:0}
+.install{margin-top:18px}
+.hero .install p{font-size:11px;line-height:1.5;max-width:none;margin:0 0 8px}
+.command{margin:0;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--text);font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;overflow-wrap:anywhere;user-select:all}
+.command code{font:inherit}
 .preview{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px 20px}
 .preview img{flex:none;max-width:100%;height:auto}
-.feature{display:grid;grid-template-columns:.85fr 1.35fr;align-items:center;gap:65px;padding:52px 0;border-top:1px solid var(--line)}
+.feature{display:grid;grid-template-columns:.85fr 1.35fr;align-items:start;gap:65px;padding:52px 0;border-top:1px solid var(--line)}
 .feature h2{font-size:29px;font-weight:550;line-height:1.2;letter-spacing:-.9px;margin:12px 0 15px}
 .feature p{font-size:15px;line-height:1.7;color:var(--muted);max-width:285px;margin:0}
 .screen{min-width:0;width:fit-content;max-width:100%;justify-self:center;display:flex;align-items:center;justify-content:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
@@ -38,6 +43,8 @@ kbd{font:inherit;color:var(--text)}
 footer{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:28px 0 34px;border-top:1px solid var(--line);font-size:11px;color:var(--muted)}
 footer a{text-decoration:none}
 footer a:hover{text-decoration:underline}
+.powered-by a{color:var(--text);font-weight:500}
+.powered-by a:hover{color:var(--accent)}
 @media(max-width:900px){.feature{grid-template-columns:1fr;gap:24px}.feature p{max-width:440px}}
 @media(max-width:700px){header,main,footer{width:calc(100% - 36px)}header{height:74px}.hero{grid-template-columns:1fr;gap:32px;padding:46px 0}h1{letter-spacing:-2px}.hero p{max-width:440px}.preview{padding:20px;gap:10px}.feature{grid-template-columns:1fr;gap:24px;padding:36px 0}.feature p{max-width:440px}.screen{padding:10px}.feature h2{font-size:26px}footer{align-items:flex-start;flex-direction:column;gap:8px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
@@ -53,27 +60,27 @@ footer a:hover{text-decoration:underline}
 <main>
   <section class="hero">
     <div>
-      <div class="label">Dictation for macOS</div>
-      <h1>Local dictation.<br><span>One shortcut.</span></h1>
+      <h1>One shortcut.<br></h1>
       <p>Tap <kbd>Right Option</kbd>, speak, and tap again. Paraketto transcribes on your Mac and pastes where you’re writing.</p>
       <a class="download" href="https://github.com/LokalOptima/swift-paraketto/releases/latest/download/Paraketto.zip">Download for Mac <span aria-hidden="true">↓</span></a>
+      <div class="install">
+        <p>Move Paraketto to Applications, then run in Terminal:</p>
+        <pre class="command"><code>xattr -dr com.apple.quarantine /Applications/Paraketto.app</code></pre>
+      </div>
       <div class="requirements">Apple Silicon · macOS 14+ · Free & open source</div>
     </div>
-    <div class="preview">
-      <img data-shot="menu-ready" alt="Paraketto’s compact menu, ready to dictate">
-      <img data-shot="pill-recording" alt="The floating recording indicator">
-    </div>
+    <img data-shot="menu-ready" alt="Paraketto’s compact menu, ready to dictate">
   </section>
   <section class="feature">
-    <div><div class="label">Custom dictionary</div><h2>The right spelling.</h2><p>Correct recurring mishearings of names, technical terms, and phrases.</p></div>
+    <div><h2>Custom Dictionary.</h2><p>Correct recurring mishearings of names, technical terms, and phrases.</p></div>
     <div class="screen"><img data-shot="dictionary" alt="Sample replacements for Core ML, GitHub, macOS, Paraketto and SwiftUI"></div>
   </section>
   <section class="feature">
-    <div><div class="label">Audio files</div><h2>Drop. Transcribe.</h2><p>Drop recordings onto the Dictionary window to transcribe them locally.</p></div>
+    <div><h2>Drop & Transcribe.</h2><p>Drop recordings onto the Dictionary window to transcribe them locally.</p></div>
     <div class="screen"><img data-shot="dictionary-drop" alt="Drop audio files onto the Dictionary window"></div>
   </section>
 </main>
-<footer><span>Speech recognition runs on your Mac.</span><a href="https://github.com/LokalOptima/swift-paraketto#how-to-install-it">Installation instructions ↗</a></footer>
+<footer><span class="powered-by">Powered by <a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml">Parakeet Ultra Core ML</a></span><a href="https://github.com/LokalOptima/swift-paraketto#how-to-install-it">Installation instructions ↗</a></footer>
 <noscript><p>Enable JavaScript to display the screenshots, or open the PNG files in the dark folder.</p></noscript>
 <script>
 const captures = __SCREENSHOTS__;

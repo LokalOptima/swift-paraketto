@@ -312,6 +312,14 @@ over the newest audio; a silence of 0.8 s ends the segment before it, which is t
 decoded right away on the otherwise idle ANE and CPU. At stop only the audio after the last cut is
 left: nothing if you paused, otherwise one short encoder pass.
 
+An import has the whole file, so nobody waits for the next pause. Its session evaluates the VAD
+once per complete 14.96 s block, then applies the same pause and window rules to the probabilities
+of all complete blocks; only the tail uses a partial block. The 0.24 s cadence instead re-evaluates
+the growing partial block from its start, a full 15 s preprocessor and VAD pass each time, which
+was over half of an import's time. Full blocks give the head the same normalization context
+everywhere, so some cuts move, but accuracy did not change (see
+[Import speed](#import-speed-2026-11-13)).
+
 Audio memory stays bounded: the recognizer discards consumed samples, retaining only the
 next window's overlap and the incomplete VAD block. Capture writes a temporary Float32 WAV
 as audio arrives; the transcriber reads small batches from it. Only the latest file-length
@@ -325,7 +333,8 @@ The live WAV is a temporary backlog buffer, not the old week-long recording hist
 capture finalizes its header and synchronizes the file; transcription reads the published samples
 through the shared file handle. The file is not moved into permanent storage.
 
-Live and file transcription both feed batches of at most 100 ms through the same session and pause rules.
+Live and file transcription both feed batches of at most 100 ms through a session with the same pause
+rules; imports differ only in VAD cadence, as described above.
 Each batch drains an autorelease pool so temporary Core ML/Foundation objects do not accumulate
 during a long file import with no run-loop yield. The final batch drains one too.
 VAD results for the current partial block are reused only when the sample count is unchanged,
@@ -374,6 +383,30 @@ The largest improvement was temporary-object lifetime, rather than fewer model c
 were also exercised. WAV finalization measured about 0.08 ms and remains synchronized.
 This synthetic fixture checks path consistency and resource use, not recognition accuracy across
 languages or a general speed guarantee.
+
+### Import speed, 2026-11-13
+
+Measured in release builds on the same M1 Max (macOS 15.8.2) with the stock models, importing a
+9,754 s (2 h 42 min) meeting recording, 44.1 kHz stereo WAV, after model warm-up:
+
+| Import | Time | Real time | VAD evaluations | Peak memory |
+|---|---:|---:|---:|---:|
+| Before: VAD every 0.24 s, encode and decode in turn | 290.6 s | 33.6× | 36,216 | 95 MB |
+| VAD per block (current) | 134.6 s | 72.5× | 653 | 97 MB |
+
+Before, the VAD took 155 s: about 1.7 ms of CPU preprocessing and 2.4 ms on the ANE per evaluation.
+Now it takes about 3 s, and the encoder and decoder take most of the rest, one after the other.
+
+Evaluating the VAD per block moves some cuts (1,293 segments instead of 1,321) and changes 2% of
+the meeting's words, mostly one or two tokens at a time near a cut or window start that moved.
+Accuracy was checked on 7.7 hours of audio with human transcripts: the TED-LIUM long-form test set
+(11 talks) and eight Rev16 podcast episodes, 78,860 reference words, scored with Whisper's English
+normalizer and `jiwer`. Word error rate was 12.975% with the 0.24 s cadence and 12.980% per block,
+4 more errors in total. A paired bootstrap over 250-word stretches of the references gives a 95%
+interval of −0.14 to +0.16 points; per block was worse on 50 stretches and better on 51. TED-LIUM
+alone went from 2.44% to 2.40%. Rev16's absolute error rate is inflated because its transcripts
+omit the podcasts' ads, which the model transcribes; that affects both cadences equally. These sets
+are English only.
 
 ### Optional model experiments
 

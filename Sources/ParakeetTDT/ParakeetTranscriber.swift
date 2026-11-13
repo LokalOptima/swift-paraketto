@@ -21,7 +21,8 @@ public struct Transcription {
 ///
 /// A `Session` accepts audio while it is being recorded and transcribes each segment as soon
 /// as a pause ends it, so at the end only the speech after the last pause is left.
-/// `transcribe(_:)` is the same thing with all the audio appended at once.
+/// `transcribe(_:)` is the same thing with all the audio appended at once. A file session
+/// (`startSession(file: true)`) looks for pauses once per VAD block instead.
 public final class ParakeetTranscriber {
     static let windowFrames = ParakeetConstants.windowSamples / ParakeetConstants.samplesPerFrame
     // 15 s is 187.5 encoder frames. Use whole-frame VAD blocks (14.96 s) so
@@ -49,8 +50,10 @@ public final class ParakeetTranscriber {
         return try session.finish()
     }
 
-    public func startSession() -> Session {
-        Session(transcriber: self)
+    /// - Parameter file: the whole recording is already available, as in an import. Pauses are then
+    ///   looked for once per complete VAD block rather than every 0.24 s.
+    public func startSession(file: Bool = false) -> Session {
+        Session(transcriber: self, file: file)
     }
 
     /// Exercise model execution directly: normal transcription correctly skips silence.
@@ -88,6 +91,8 @@ public final class ParakeetTranscriber {
     /// nor repeated and the text near each window edge, where the encoder hears worst, is the other side's.
     public final class Session {
         private let transcriber: ParakeetTranscriber
+        /// The whole recording is available up front, as in an import.
+        private let file: Bool
         private var samples: [Float] = []
         private var sampleOffset = 0
         // Exposed internally for memory-bound regression tests.
@@ -116,8 +121,9 @@ public final class ParakeetTranscriber {
         private static let vadCadenceFrames = 3  // 0.24 s
         private var melSeconds = 0.0, encodeSeconds = 0.0, decodeSeconds = 0.0, vadSeconds = 0.0
 
-        init(transcriber: ParakeetTranscriber) {
+        init(transcriber: ParakeetTranscriber, file: Bool = false) {
             self.transcriber = transcriber
+            self.file = file
             DecodeProfile.reset()
         }
 
@@ -159,7 +165,11 @@ public final class ParakeetTranscriber {
             let overlap = ParakeetTranscriber.overlapFrames
             while true {
                 let leftContext = boundaryIsOverlapped ? overlap : ParakeetTranscriber.contextFrames
-                let total = totalFrames
+                // A file has no listener waiting for the next pause, so until the end its cuts are decided
+                // only on complete VAD blocks: one evaluation per 14.96 s instead of one per 0.24 s.
+                let total = file && !final
+                    ? totalSamples / ParakeetTranscriber.vadBlockSamples * ParakeetTranscriber.windowFrames
+                    : totalFrames
                 let remaining = total - segmentStart
                 if final {
                     // The tail is decoded in one pass when it fits the window with its left overlap.

@@ -82,7 +82,7 @@ actor Transcriber {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         let reader = try AudioFileReader(url: url)
-        let session = transcriber.startSession()
+        let session = transcriber.startSession(file: true)
         var reported = -1.0
         while let samples = try reader.next() {
             try Task.checkCancellation()

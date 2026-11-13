@@ -22,7 +22,8 @@ public struct Transcription {
 /// A `Session` accepts audio while it is being recorded and transcribes each segment as soon
 /// as a pause ends it, so at the end only the speech after the last pause is left.
 /// `transcribe(_:)` is the same thing with all the audio appended at once. A file session
-/// (`startSession(file: true)`) looks for pauses once per VAD block instead.
+/// (`startSession(file: true)`) looks for pauses once per VAD block instead and encodes each
+/// segment while the previous one is decoded.
 public final class ParakeetTranscriber {
     static let windowFrames = ParakeetConstants.windowSamples / ParakeetConstants.samplesPerFrame
     // 15 s is 187.5 encoder frames. Use whole-frame VAD blocks (14.96 s) so
@@ -33,6 +34,8 @@ public final class ParakeetTranscriber {
     let decoder: TdtDecoder
     let segmenter: Segmenter
     private let audioBuffer = try! MLMultiArray.float32([1, ParakeetConstants.windowSamples])
+    /// A file session's encoder queue preprocesses while the session's thread runs the VAD.
+    private let preprocessLock = NSLock()
 
     /// - Parameter commitPauseSeconds: silence that ends a segment while recording (0 waits for the window to fill).
     public init(models: ParakeetModels, commitPauseSeconds: Double = 0.8) throws {
@@ -51,7 +54,8 @@ public final class ParakeetTranscriber {
     }
 
     /// - Parameter file: the whole recording is already available, as in an import. Pauses are then
-    ///   looked for once per complete VAD block rather than every 0.24 s.
+    ///   looked for once per complete VAD block rather than every 0.24 s, and segments are encoded
+    ///   while the previous one is decoded. Call `finish` or `cancel` before reusing the transcriber.
     public func startSession(file: Bool = false) -> Session {
         Session(transcriber: self, file: file)
     }
@@ -91,8 +95,10 @@ public final class ParakeetTranscriber {
     /// nor repeated and the text near each window edge, where the encoder hears worst, is the other side's.
     public final class Session {
         private let transcriber: ParakeetTranscriber
-        /// The whole recording is available up front, as in an import.
-        private let file: Bool
+        /// Set for a file session: segments are decoded off this thread and joined at `finish`.
+        private let pipeline: SegmentPipeline?
+        /// A file session's segments and silent stretches, in order, for the join at `finish`.
+        private var pipelined: [PipelinedSegment] = []
         private var samples: [Float] = []
         private var sampleOffset = 0
         // Exposed internally for memory-bound regression tests.
@@ -121,10 +127,19 @@ public final class ParakeetTranscriber {
         private static let vadCadenceFrames = 3  // 0.24 s
         private var melSeconds = 0.0, encodeSeconds = 0.0, decodeSeconds = 0.0, vadSeconds = 0.0
 
+        private enum PipelinedSegment {
+            case silence
+            case speech(index: Int)
+        }
+
         init(transcriber: ParakeetTranscriber, file: Bool = false) {
             self.transcriber = transcriber
-            self.file = file
+            pipeline = file ? SegmentPipeline(transcriber: transcriber) : nil
             DecodeProfile.reset()
+        }
+
+        deinit {
+            pipeline?.cancel()
         }
 
         private var totalSamples: Int { sampleOffset + samples.count }
@@ -152,12 +167,34 @@ public final class ParakeetTranscriber {
             if totalSamples >= ParakeetConstants.minimumSamples {
                 try autoreleasepool { try advance(final: true) }
             }
+            if let pipeline {
+                let decoded = try pipeline.finish()
+                for entry in pipelined {
+                    switch entry {
+                    case .silence:
+                        committed += provisional
+                        provisional = []
+                    case .speech(let index):
+                        let segment = decoded[index]
+                        join(segment.tokens, segment: segment.segment, windowStart: segment.windowStart)
+                    }
+                }
+                encodeSeconds = pipeline.encodeSeconds
+                decodeSeconds = pipeline.decodeSeconds
+            }
             let tokens = committed + provisional
             if DecodeProfile.enabled {
                 let ms = { (s: Double) in Int(s * 1000) }
                 FileHandle.standardError.write(Data("timing: vad \(ms(vadSeconds)) ms, \(segments) segments: mel \(ms(melSeconds)) ms, encoder \(ms(encodeSeconds)) ms, decode \(ms(decodeSeconds)) ms over \(totalFrames) frames, \(tokens.count) tokens; \(DecodeProfile.summary)\n".utf8))
             }
             return Transcription(text: transcriber.models.vocabulary.text(for: tokens.map(\.id)), segments: segments, tokens: tokens.map { (id: $0.id, frame: $0.frame) })
+        }
+
+        /// Ends the session without a transcript. A file session first waits for the segment being
+        /// decoded, so the transcriber's models are free again when this returns.
+        public func cancel() {
+            finished = true
+            pipeline?.cancel()
         }
 
         private func advance(final: Bool) throws {
@@ -167,7 +204,7 @@ public final class ParakeetTranscriber {
                 let leftContext = boundaryIsOverlapped ? overlap : ParakeetTranscriber.contextFrames
                 // A file has no listener waiting for the next pause, so until the end its cuts are decided
                 // only on complete VAD blocks: one evaluation per 14.96 s instead of one per 0.24 s.
-                let total = file && !final
+                let total = pipeline != nil && !final
                     ? totalSamples / ParakeetTranscriber.vadBlockSamples * ParakeetTranscriber.windowFrames
                     : totalFrames
                 let remaining = total - segmentStart
@@ -205,8 +242,12 @@ public final class ParakeetTranscriber {
                 try process(range, overlapped: overlapped)
             } else {
                 // Nothing to reconcile with across a silent stretch.
-                committed += provisional
-                provisional = []
+                if pipeline != nil {
+                    pipelined.append(.silence)
+                } else {
+                    committed += provisional
+                    provisional = []
+                }
                 boundary = range.upperBound
                 boundaryIsOverlapped = false
             }
@@ -259,26 +300,51 @@ public final class ParakeetTranscriber {
             let windowEnd = min(totalFrames, range.upperBound + (overlapped ? overlap : context))
             // The model occasionally returns nothing at all for a window that starts in the middle of a
             // word, so a window with speech that decodes empty is tried again from a later start.
-            let starts = [boundaryIsOverlapped ? overlap : context, context, 0].map { max(0, range.lowerBound - $0) }
+            var starts: [Int] = []
+            for start in [boundaryIsOverlapped ? overlap : context, context, 0].map({ max(0, range.lowerBound - $0) })
+            where !starts.contains(start) {
+                starts.append(start)
+            }
+            let segment = SegmentPipeline.Segment(range: range, overlapped: overlapped,
+                                                  previousBoundary: boundary, previousOverlapped: boundaryIsOverlapped)
+            boundary = range.upperBound
+            boundaryIsOverlapped = overlapped
+            segments += 1
+            if let pipeline {
+                let first = starts.min()!
+                let from = first * ParakeetConstants.samplesPerFrame - sampleOffset
+                let to = min(windowEnd * ParakeetConstants.samplesPerFrame - sampleOffset, samples.count)
+                let job = SegmentPipeline.Job(segment: segment, starts: starts, windowEnd: windowEnd,
+                                              audio: Array(samples[from..<max(from, to)]), audioStartFrame: first)
+                pipelined.append(.speech(index: try pipeline.submit(job)))
+                return
+            }
             var tokens: [Token] = []
             var windowStart = starts[0]
-            var tried = Set<Int>()
-            for candidate in starts where tried.insert(candidate).inserted {
+            for candidate in starts {
                 windowStart = candidate
                 tokens = try decodeWindow(candidate..<windowEnd)
                 if !tokens.isEmpty { break }
             }
-            if TdtDecoder.debug, boundaryIsOverlapped {
-                FileHandle.standardError.write(Data("join at \(boundary): previous \(provisional.map { "\($0.id)@\($0.frame)" }) next \(tokens.prefix(40).map { "\($0.id)@\($0.frame)" })\n".utf8))
+            join(tokens, segment: segment, windowStart: windowStart)
+        }
+
+        /// Joins a decoded segment to the transcript so far. `windowStart` is where its decoded window began.
+        private func join(_ decoded: [Token], segment: SegmentPipeline.Segment, windowStart: Int) {
+            let overlap = ParakeetTranscriber.overlapFrames
+            let range = segment.range
+            var tokens = decoded
+            if TdtDecoder.debug, segment.previousOverlapped {
+                FileHandle.standardError.write(Data("join at \(segment.previousBoundary): previous \(provisional.map { "\($0.id)@\($0.frame)" }) next \(tokens.prefix(40).map { "\($0.id)@\($0.frame)" })\n".utf8))
             }
-            if boundaryIsOverlapped {
-                let joined = ParakeetTranscriber.join(previous: provisional, next: tokens, boundary: boundary, nextStart: windowStart)
+            if segment.previousOverlapped {
+                let joined = ParakeetTranscriber.join(previous: provisional, next: tokens, boundary: segment.previousBoundary, nextStart: windowStart)
                 committed += joined.settled
                 tokens = joined.rest
             } else {
                 tokens = tokens.filter { $0.frame >= range.lowerBound }
             }
-            if overlapped {
+            if segment.overlapped {
                 let split = tokens.firstIndex { $0.frame >= range.upperBound - overlap } ?? tokens.count
                 committed += tokens[..<split]
                 provisional = Array(tokens[split...])
@@ -286,9 +352,6 @@ public final class ParakeetTranscriber {
                 committed += tokens.filter { $0.frame < range.upperBound }
                 provisional = []
             }
-            boundary = range.upperBound
-            boundaryIsOverlapped = overlapped
-            segments += 1
         }
 
         /// Encodes and greedily decodes the audio of `frames` with a fresh decoder; tokens carry global frames.
@@ -370,18 +433,21 @@ public final class ParakeetTranscriber {
     }
 
     func preprocess(_ samples: ArraySlice<Float>) throws -> Mel {
-        let pointer = audioBuffer.floatPointer
-        memset(pointer, 0, ParakeetConstants.windowSamples * MemoryLayout<Float>.stride)
-        samples.withUnsafeBufferPointer { pointer.update(from: $0.baseAddress!, count: $0.count) }
-        // Declare the length rounded up to a whole encoder frame (zero-padded), as FluidAudio does;
-        // the last frame then normalises against the same mel columns and decodes identically.
-        let frames = ParakeetConstants.frames(covering: samples.count)
-        let declaredLength = min(frames * ParakeetConstants.samplesPerFrame, ParakeetConstants.windowSamples)
-        let output = try models.preprocessor.prediction(from: MLDictionaryFeatureProvider(dictionary: [
-            "audio_signal": MLFeatureValue(multiArray: audioBuffer),
-            "audio_length": MLFeatureValue(multiArray: try .int32(declaredLength)),
-        ]))
-        return Mel(mel: try output.array("mel"), length: try output.array("mel_length"), frames: frames)
+        // Core ML allocates each prediction's outputs, so the mel stays valid after the lock is released.
+        try preprocessLock.withLock {
+            let pointer = audioBuffer.floatPointer
+            memset(pointer, 0, ParakeetConstants.windowSamples * MemoryLayout<Float>.stride)
+            samples.withUnsafeBufferPointer { pointer.update(from: $0.baseAddress!, count: $0.count) }
+            // Declare the length rounded up to a whole encoder frame (zero-padded), as FluidAudio does;
+            // the last frame then normalises against the same mel columns and decodes identically.
+            let frames = ParakeetConstants.frames(covering: samples.count)
+            let declaredLength = min(frames * ParakeetConstants.samplesPerFrame, ParakeetConstants.windowSamples)
+            let output = try models.preprocessor.prediction(from: MLDictionaryFeatureProvider(dictionary: [
+                "audio_signal": MLFeatureValue(multiArray: audioBuffer),
+                "audio_length": MLFeatureValue(multiArray: try .int32(declaredLength)),
+            ]))
+            return Mel(mel: try output.array("mel"), length: try output.array("mel_length"), frames: frames)
+        }
     }
 
     func encode(_ mel: Mel) throws -> EncoderFrames {

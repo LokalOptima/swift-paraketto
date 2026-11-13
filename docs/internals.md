@@ -288,6 +288,7 @@ with no package dependencies:
 | `ParakeetTranscriber.swift` | streaming sessions and mel → encoder → decode; about 1 s of context at pauses, 2 s of overlap on each side of cuts through speech |
 | `TdtDecoder.swift` | greedy Token-and-Duration Transducer loop with the 2-layer LSTM state |
 | `VoiceActivity.swift` | places cuts at pauses found by the model's own VAD head |
+| `SegmentPipeline.swift` | for imports, encodes each segment while the previous one is decoded |
 | `MultiArray.swift` | small `MLMultiArray` helpers |
 
 The Ultra model files are FluidInference's Core ML conversion of moondream's checkpoint, which is
@@ -320,6 +321,15 @@ was over half of an import's time. Full blocks give the head the same normalizat
 everywhere, so some cuts move, but accuracy did not change (see
 [Import speed](#import-speed-2026-11-13)).
 
+An import also encodes each segment on one queue (ANE) while the previous segment is decoded on
+another (CPU); otherwise every encoder pass waits for the decoder. Cuts depend only on the VAD, so
+segments can be queued before earlier ones are decoded. The joins between segments are applied in
+order at the end, so the transcript is identical to encoding and decoding each segment in turn. Two
+segments in flight are enough for the overlap; each holds a copy of its window's audio (at most
+15 s) until it is decoded. Cancelling waits for the segment being decoded, so dictation can reuse
+the models right away. Live dictation keeps everything on its own thread: with a pause every few
+seconds there is little to overlap.
+
 Audio memory stays bounded: the recognizer discards consumed samples, retaining only the
 next window's overlap and the incomplete VAD block. Capture writes a temporary Float32 WAV
 as audio arrives; the transcriber reads small batches from it. Only the latest file-length
@@ -334,7 +344,7 @@ capture finalizes its header and synchronizes the file; transcription reads the 
 through the shared file handle. The file is not moved into permanent storage.
 
 Live and file transcription both feed batches of at most 100 ms through a session with the same pause
-rules; imports differ only in VAD cadence, as described above.
+rules; imports differ only in VAD cadence and in decoding off the session's thread, as described above.
 Each batch drains an autorelease pool so temporary Core ML/Foundation objects do not accumulate
 during a long file import with no run-loop yield. The final batch drains one too.
 VAD results for the current partial block are reused only when the sample count is unchanged,
@@ -392,10 +402,14 @@ Measured in release builds on the same M1 Max (macOS 15.8.2) with the stock mode
 | Import | Time | Real time | VAD evaluations | Peak memory |
 |---|---:|---:|---:|---:|
 | Before: VAD every 0.24 s, encode and decode in turn | 290.6 s | 33.6× | 36,216 | 95 MB |
-| VAD per block (current) | 134.6 s | 72.5× | 653 | 97 MB |
+| VAD per block, encode and decode in turn | 134.6 s | 72.5× | 653 | 97 MB |
+| VAD per block, encode while decoding (current) | 75.4 s | 129.3× | 653 | 123 MB |
 
 Before, the VAD took 155 s: about 1.7 ms of CPU preprocessing and 2.4 ms on the ANE per evaluation.
-Now it takes about 3 s, and the encoder and decoder take most of the rest, one after the other.
+Now the ANE encoder is the limit: it is busy for about 71 of the 75 s, so more decode threads do not help
+(one to four measured within 2%). Overlapping encode and decode gives token-for-token the same
+transcript as encoding and decoding in turn, checked on this recording, on long-form talks and podcasts,
+and on silence, sustained speech and speech starting near a VAD block boundary.
 
 Evaluating the VAD per block moves some cuts (1,293 segments instead of 1,321) and changes 2% of
 the meeting's words, mostly one or two tokens at a time near a cut or window start that moved.
@@ -415,6 +429,9 @@ on `optimizations`. That branch includes `make encoder-export` and
 `make decoder-export`; its copy of this document explains their setup and tradeoffs.
 `master` uses one stock-model path and does not discover or load those optional exports.
 The batch memory limits, VAD caching and off-main-thread live feeder apply to both branches.
+A benchmark build combining the import changes above with both optional exports imported the
+meeting in 63.5 s (153.5×); on the labeled sets the optional exports changed the error count by +18
+(95% interval −0.09 to +0.12 points). `optimizations` gets the import changes when it merges `master`.
 
 ## Website
 

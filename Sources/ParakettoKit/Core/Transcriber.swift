@@ -83,6 +83,8 @@ actor Transcriber {
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         let reader = try AudioFileReader(url: url)
         let session = transcriber.startSession(file: true)
+        // Waits for the segment being decoded if the import stops early, so dictation can reuse the models.
+        defer { session.cancel() }
         var reported = -1.0
         while let samples = try reader.next() {
             try Task.checkCancellation()

@@ -430,17 +430,6 @@ alone went from 2.44% to 2.40%. Rev16's absolute error rate is inflated because 
 omit the podcasts' ads, which the model transcribes; that affects both cadences equally. These sets
 are English only.
 
-### Optional model experiments
-
-The multi-window encoder, fused decoder, export tools and historical comparisons are preserved
-on `optimizations`. That branch includes `make encoder-export` and
-`make decoder-export`; its copy of this document explains their setup and tradeoffs.
-`master` uses one stock-model path and does not discover or load those optional exports.
-The batch memory limits, VAD caching and off-main-thread live feeder apply to both branches.
-A benchmark build combining the import changes above with both optional exports imported the
-meeting in 63.5 s (153.5×); on the labeled sets the optional exports changed the error count by +18
-(95% interval −0.09 to +0.12 points). `optimizations` gets the import changes when it merges `master`.
-
 ## Website
 
 GitHub Pages publishes `docs/` from `master` at
@@ -489,6 +478,5 @@ existing path, including one created by another writer after a filename was chos
 benchmarks and the VAD exporter live on the `dev-tools` branch, which is `master` plus those files,
 and this document's copy there explains them. `git switch dev-tools && git merge master` brings it up
 to date. Never merge `dev-tools` into `master`.
-Keep `optimizations` separate from `master` as well.
 Some tests on `dev-tools` still use removed history, transcript-editing and optional-model APIs; merging
 the app changes also requires adapting those tests before the full suite can run.

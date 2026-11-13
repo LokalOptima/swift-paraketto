@@ -29,7 +29,8 @@ public enum ParakeetConstants {
     public static let decoderLayers = 2
     public static let blankToken = 8192
     public static let durationBins = [0, 1, 2, 3, 4]
-    public static let maxSymbolsPerFrame = 10
+    /// Ultra often emits two tokens on one frame; longer runs on a single frame are mostly invented phrases.
+    public static let maxSymbolsPerFrame = 3
     /// Shorter recordings are rejected: the model has nothing to decode and FluidAudio uses the same floor.
     public static let minimumSamples = sampleRate * 3 / 10
 

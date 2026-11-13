@@ -370,6 +370,14 @@ drifts until whole segments decode to blanks.
 - **Empty windows are retried.** The model sometimes returns nothing at all for a window that
   starts mid-word (FluidAudio's own models do the same), so a window with speech that decodes
   empty is decoded again from a later start.
+- **At most three tokens per encoder frame.** A TDT step with duration 0 stays on its frame, and
+  the decoder then moves on after three tokens there. Ultra regularly emits two tokens on one frame
+  (2,118 frames in 7.7 hours of long-form audio and a 2 h 42 min meeting), but the 60 frames with
+  three or more were mostly invented phrases, such as " a little bit more than a great." on one
+  frame. On the TED-LIUM and Rev16 long-form sets, 78,860 reference words, a cap of 3 instead of 10
+  removed 10 errors and was worse on no 250-word stretch (95% interval −0.03 to 0.00 points). A cap
+  of 2, as paraketto's CUDA engine uses for V2 and V3, also cut legitimate tokens: 7 stretches
+  worse and 4 better.
 
 ### Performance review, 2026-11-06
 
